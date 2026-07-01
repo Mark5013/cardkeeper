@@ -1,0 +1,173 @@
+import { sql } from "drizzle-orm";
+import {
+  bigint,
+  check,
+  date,
+  index,
+  integer,
+  jsonb,
+  pgTable,
+  text,
+  timestamp,
+  uniqueIndex,
+  uuid,
+  varchar,
+} from "drizzle-orm/pg-core";
+
+const timestamps = {
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+};
+
+export const profiles = pgTable("profiles", {
+  userId: uuid("user_id").primaryKey(),
+  displayName: text("display_name"),
+  preferredCurrency: varchar("preferred_currency", { length: 3 }).default("USD").notNull(),
+  ...timestamps,
+});
+
+export const cardSets = pgTable(
+  "card_sets",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    providerId: text("provider_id").notNull(),
+    languageCode: varchar("language_code", { length: 10 }).default("en").notNull(),
+    name: text("name").notNull(),
+    series: text("series"),
+    printedTotal: integer("printed_total"),
+    total: integer("total"),
+    releaseDate: date("release_date"),
+    symbolUrl: text("symbol_url"),
+    logoUrl: text("logo_url"),
+    ...timestamps,
+  },
+  (table) => [
+    uniqueIndex("card_sets_provider_language_idx").on(table.providerId, table.languageCode),
+    index("card_sets_name_idx").on(table.name),
+  ],
+);
+
+export const cards = pgTable(
+  "cards",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    providerId: text("provider_id").notNull(),
+    setId: uuid("set_id")
+      .notNull()
+      .references(() => cardSets.id, { onDelete: "cascade" }),
+    languageCode: varchar("language_code", { length: 10 }).default("en").notNull(),
+    name: text("name").notNull(),
+    number: text("number").notNull(),
+    supertype: text("supertype"),
+    subtypes: text("subtypes").array(),
+    rarity: text("rarity"),
+    artist: text("artist"),
+    imageSmallUrl: text("image_small_url"),
+    imageLargeUrl: text("image_large_url"),
+    providerData: jsonb("provider_data").$type<Record<string, unknown>>(),
+    ...timestamps,
+  },
+  (table) => [
+    uniqueIndex("cards_provider_language_idx").on(table.providerId, table.languageCode),
+    index("cards_name_idx").on(table.name),
+    index("cards_number_idx").on(table.number),
+    index("cards_set_idx").on(table.setId),
+  ],
+);
+
+export const cardVariants = pgTable(
+  "card_variants",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    cardId: uuid("card_id")
+      .notNull()
+      .references(() => cards.id, { onDelete: "cascade" }),
+    printing: text("printing").default("normal").notNull(),
+    condition: text("condition").default("unspecified").notNull(),
+    languageCode: varchar("language_code", { length: 10 }).default("en").notNull(),
+    externalVariantId: text("external_variant_id"),
+    ...timestamps,
+  },
+  (table) => [
+    uniqueIndex("card_variants_identity_idx").on(
+      table.cardId,
+      table.printing,
+      table.condition,
+      table.languageCode,
+    ),
+    index("card_variants_card_idx").on(table.cardId),
+  ],
+);
+
+export const collectionItems = pgTable(
+  "collection_items",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => profiles.userId, { onDelete: "cascade" }),
+    cardVariantId: uuid("card_variant_id")
+      .notNull()
+      .references(() => cardVariants.id, { onDelete: "cascade" }),
+    quantity: integer("quantity").default(1).notNull(),
+    ...timestamps,
+  },
+  (table) => [
+    uniqueIndex("collection_user_variant_idx").on(table.userId, table.cardVariantId),
+    index("collection_user_idx").on(table.userId),
+    check("collection_items_quantity_positive", sql`${table.quantity} > 0`),
+  ],
+);
+
+export const currentPrices = pgTable(
+  "current_prices",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    cardVariantId: uuid("card_variant_id")
+      .notNull()
+      .references(() => cardVariants.id, { onDelete: "cascade" }),
+    source: text("source").notNull(),
+    priceType: text("price_type").default("market").notNull(),
+    currency: varchar("currency", { length: 3 }).notNull(),
+    amountMinor: bigint("amount_minor", { mode: "number" }).notNull(),
+    observedAt: timestamp("observed_at", { withTimezone: true }).notNull(),
+    ...timestamps,
+  },
+  (table) => [
+    uniqueIndex("current_prices_identity_idx").on(
+      table.cardVariantId,
+      table.source,
+      table.priceType,
+      table.currency,
+    ),
+    index("current_prices_variant_idx").on(table.cardVariantId),
+    check("current_prices_amount_nonnegative", sql`${table.amountMinor} >= 0`),
+  ],
+);
+
+export const pricePoints = pgTable(
+  "price_points",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    cardVariantId: uuid("card_variant_id")
+      .notNull()
+      .references(() => cardVariants.id, { onDelete: "cascade" }),
+    source: text("source").notNull(),
+    priceType: text("price_type").default("market").notNull(),
+    currency: varchar("currency", { length: 3 }).notNull(),
+    amountMinor: bigint("amount_minor", { mode: "number" }).notNull(),
+    observedAt: timestamp("observed_at", { withTimezone: true }).notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (table) => [
+    uniqueIndex("price_points_observation_idx").on(
+      table.cardVariantId,
+      table.source,
+      table.priceType,
+      table.currency,
+      table.observedAt,
+    ),
+    index("price_points_variant_date_idx").on(table.cardVariantId, table.observedAt),
+    check("price_points_amount_nonnegative", sql`${table.amountMinor} >= 0`),
+  ],
+);
