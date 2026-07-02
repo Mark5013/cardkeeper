@@ -4,8 +4,8 @@ import Link from "next/link";
 import { connection } from "next/server";
 
 import { SiteHeader } from "@/components/site-header";
+import { getCatalogPokemonSets } from "@/lib/catalog/data";
 import { getCurrentSetCollectionProgress } from "@/lib/collection/data";
-import { getPokemonSets } from "@/lib/pokemon-tcg/client";
 
 export const metadata: Metadata = {
   title: "Search by set",
@@ -16,7 +16,7 @@ export default async function SetsPage() {
   await connection();
 
   const [setsResult, collectionProgressResult] = await Promise.allSettled([
-    getPokemonSets(),
+    getCatalogPokemonSets(),
     getCurrentSetCollectionProgress(),
   ]);
   const sets = setsResult.status === "fulfilled" ? setsResult.value : null;
@@ -64,6 +64,7 @@ export default async function SetsPage() {
                 className="group flex min-h-36 flex-col justify-between rounded-lg border border-[var(--line)] bg-[var(--surface)] p-5 transition duration-200 hover:-translate-y-1 hover:border-[var(--secondary)]"
                 href={`/sets/${encodeURIComponent(set.id)}`}
                 key={set.id}
+                prefetch={false}
               >
                 <div className="flex items-start justify-between gap-4">
                   <div className="min-w-0">

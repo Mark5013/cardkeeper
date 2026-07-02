@@ -6,7 +6,7 @@ import { connection } from "next/server";
 
 import { SetCardsBrowser } from "@/components/set-cards-browser";
 import { SiteHeader } from "@/components/site-header";
-import { getPokemonCardsBySetPage, getPokemonSet } from "@/lib/pokemon-tcg/client";
+import { getCatalogPokemonCardsBySet, getCatalogPokemonSet } from "@/lib/catalog/data";
 
 export async function generateMetadata({
   params,
@@ -14,7 +14,7 @@ export async function generateMetadata({
   params: Promise<{ id: string }>;
 }): Promise<Metadata> {
   const { id } = await params;
-  const set = await getPokemonSet(id);
+  const set = await getCatalogPokemonSet(id);
 
   if (!set) return { title: "Set not found" };
 
@@ -28,7 +28,7 @@ export default async function SetDetailPage({ params }: { params: Promise<{ id: 
   await connection();
 
   const { id } = await params;
-  const set = await getPokemonSet(id);
+  const set = await getCatalogPokemonSet(id);
 
   if (!set) notFound();
 
@@ -36,7 +36,7 @@ export default async function SetDetailPage({ params }: { params: Promise<{ id: 
   let unavailable = false;
 
   try {
-    cards = await getPokemonCardsBySetPage({ setId: set.id });
+    cards = await getCatalogPokemonCardsBySet(set);
   } catch (error) {
     console.error("Set cards page failed", { setId: id, error });
     unavailable = true;

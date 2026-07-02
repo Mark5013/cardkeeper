@@ -16,6 +16,7 @@ export function CardResultGrid({ cards }: { cards: CardSearchResult[] }) {
           className="group overflow-hidden rounded-lg border border-[var(--line)] bg-[var(--surface)] transition duration-200 hover:-translate-y-1 hover:border-[var(--secondary)]"
           href={`/cards/${encodeURIComponent(card.id)}`}
           key={card.id}
+          prefetch={false}
         >
           <div className="grid grid-cols-[7rem_minmax(0,1fr)] gap-5 p-5">
             <div className="relative aspect-[245/342] overflow-hidden rounded-md bg-[var(--surface-2)] shadow-[0_12px_28px_rgb(0_0_0_/_28%)]">

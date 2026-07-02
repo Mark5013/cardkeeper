@@ -5,8 +5,8 @@ import { notFound } from "next/navigation";
 
 import { SiteHeader } from "@/components/site-header";
 import { CollectionControls } from "@/components/collection/collection-controls";
+import { getCatalogPokemonCard } from "@/lib/catalog/data";
 import { getOwnedCardVariants } from "@/lib/collection/data";
-import { getPokemonCard } from "@/lib/pokemon-tcg/client";
 import { getCardPrintingOptions } from "@/lib/pokemon-tcg/printing";
 import type { PokemonTcgCard, PokemonTcgPrice } from "@/lib/pokemon-tcg/types";
 
@@ -71,7 +71,7 @@ export async function generateMetadata({
   params: Promise<{ id: string }>;
 }): Promise<Metadata> {
   const { id } = await params;
-  const card = await getPokemonCard(id);
+  const card = await getCatalogPokemonCard(id);
 
   if (!card) return { title: "Card not found" };
 
@@ -83,7 +83,7 @@ export async function generateMetadata({
 
 export default async function CardDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const card = await getPokemonCard(id);
+  const card = await getCatalogPokemonCard(id);
 
   if (!card) notFound();
 

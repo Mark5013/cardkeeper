@@ -1,10 +1,10 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 
+import { getCatalogPokemonCard } from "@/lib/catalog/data";
 import { ensureCardVariant } from "@/lib/catalog/sync";
 import { CARD_CONDITIONS, type CardCondition } from "@/lib/collection/options";
 import { isSameOriginRequest } from "@/lib/http/security";
-import { getPokemonCard } from "@/lib/pokemon-tcg/client";
 import { getCardPrintingOptions } from "@/lib/pokemon-tcg/printing";
 import { getCurrentUser } from "@/lib/supabase/auth";
 import { createClient } from "@/lib/supabase/server";
@@ -67,7 +67,7 @@ export async function PUT(request: Request, context: RouteContext) {
     );
   }
 
-  const card = await getPokemonCard(cardId.data);
+  const card = await getCatalogPokemonCard(cardId.data);
   if (!card) {
     return NextResponse.json(
       { error: "Card not found." },

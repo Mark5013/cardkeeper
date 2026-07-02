@@ -1,11 +1,11 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 
-import { getPokemonCardsBySetPage } from "@/lib/pokemon-tcg/client";
+import { getCatalogPokemonCardsBySetPage } from "@/lib/catalog/data";
 
 const setCardsSchema = z.object({
   page: z.coerce.number().int().min(1).max(1000).default(1),
-  pageSize: z.coerce.number().int().min(1).max(250).default(250),
+  pageSize: z.coerce.number().int().min(1).max(1000).default(250),
 });
 
 type RouteContext = { params: Promise<{ id: string }> };
@@ -24,7 +24,7 @@ export async function GET(request: Request, context: RouteContext) {
 
   try {
     return NextResponse.json(
-      await getPokemonCardsBySetPage({
+      await getCatalogPokemonCardsBySetPage({
         setId: id,
         page: parsed.data.page,
         pageSize: parsed.data.pageSize,

@@ -49,6 +49,7 @@ Add secrets to `.env.local`:
 ```dotenv
 POKEMON_TCG_API_KEY=your_key_here
 DATABASE_URL=postgresql://user:password@host:5432/database
+DATABASE_MAX_CONNECTIONS=1
 ```
 
 Never prefix these values with `NEXT_PUBLIC_`; both must remain server-only.
@@ -66,6 +67,22 @@ For reviewed migrations:
 ```bash
 npm run db:generate
 npm run db:migrate
+```
+
+Import or refresh the local English Pokemon TCG catalog:
+
+```bash
+npm run catalog:import
+```
+
+Useful test runs:
+
+```bash
+npm run catalog:import -- --dry-run --max-pages=1
+npm run catalog:import -- --set-id=base1 --max-pages=1
+npm run catalog:import -- --cards-only --start-card-page=6
+npm run catalog:import -- --cards-only --cards-by-set
+npm run catalog:import -- --cards-only --cards-by-set --missing-only
 ```
 
 ## Quality checks

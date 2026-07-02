@@ -1,5 +1,3 @@
-import { SiteHeader } from "@/components/site-header";
-
 function LoadingSetCard() {
   return (
     <div className="flex min-h-36 flex-col justify-between rounded-lg border border-[var(--line)] bg-[var(--surface)] p-5">
@@ -23,7 +21,15 @@ function LoadingSetCard() {
 export default function SetsLoading() {
   return (
     <main className="min-h-screen overflow-x-hidden">
-      <SiteHeader />
+      <header className="mx-auto flex w-full max-w-6xl items-center justify-between px-6 py-7 lg:px-8">
+        <div className="flex items-center gap-3">
+          <span className="grid size-10 place-items-center rounded-lg border border-[var(--line)] bg-[var(--surface-2)] text-lg text-[var(--secondary)]">
+            C
+          </span>
+          <span className="text-lg font-bold">Cardkeeper</span>
+        </div>
+        <div className="hidden h-9 w-64 rounded-lg bg-[var(--surface-2)] sm:block" />
+      </header>
 
       <section className="mx-auto w-full max-w-6xl px-6 pb-20 pt-8 lg:px-8">
         <p className="eyebrow">Set browser</p>
