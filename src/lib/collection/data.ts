@@ -8,6 +8,76 @@ import type { PokemonTcgCard } from "@/lib/pokemon-tcg/types";
 import type { CollectionSummaryDto } from "./types";
 import type { OwnedCardVariantDto } from "./types";
 
+export async function getCurrentSetCollectionProgress(): Promise<Map<string, number> | null> {
+  const user = await getCurrentUser();
+  if (!user) return null;
+
+  const supabase = await createClient();
+  const { data: items, error: itemsError } = await supabase
+    .from("collection_items")
+    .select("card_variant_id");
+
+  if (itemsError) {
+    console.error("Failed to load set collection progress", { code: itemsError.code });
+    throw new Error("Unable to load set collection progress.");
+  }
+
+  if (items.length === 0) return new Map();
+
+  const { data: variants, error: variantsError } = await supabase
+    .from("card_variants")
+    .select("id, card_id")
+    .in("id", items.map((item) => item.card_variant_id));
+
+  if (variantsError) {
+    console.error("Failed to load set progress variants", { code: variantsError.code });
+    throw new Error("Unable to load set collection progress.");
+  }
+
+  if (variants.length === 0) return new Map();
+
+  const { data: cards, error: cardsError } = await supabase
+    .from("cards")
+    .select("id, provider_id, set_id")
+    .in("id", variants.map((variant) => variant.card_id));
+
+  if (cardsError) {
+    console.error("Failed to load set progress cards", { code: cardsError.code });
+    throw new Error("Unable to load set collection progress.");
+  }
+
+  if (cards.length === 0) return new Map();
+
+  const { data: sets, error: setsError } = await supabase
+    .from("card_sets")
+    .select("id, provider_id")
+    .in("id", cards.map((card) => card.set_id));
+
+  if (setsError) {
+    console.error("Failed to load set progress sets", { code: setsError.code });
+    throw new Error("Unable to load set collection progress.");
+  }
+
+  const setsById = new Map(sets.map((set) => [set.id, set.provider_id]));
+  const uniqueCardIdsBySet = new Map<string, Set<string>>();
+
+  for (const card of cards) {
+    const providerSetId = setsById.get(card.set_id);
+    if (!providerSetId) continue;
+
+    const uniqueCardIds = uniqueCardIdsBySet.get(providerSetId) ?? new Set<string>();
+    uniqueCardIds.add(card.provider_id);
+    uniqueCardIdsBySet.set(providerSetId, uniqueCardIds);
+  }
+
+  return new Map(
+    Array.from(uniqueCardIdsBySet, ([providerSetId, uniqueCardIds]) => [
+      providerSetId,
+      uniqueCardIds.size,
+    ]),
+  );
+}
+
 export async function getCurrentCollection(): Promise<CollectionSummaryDto | null> {
   const user = await getCurrentUser();
   if (!user) return null;

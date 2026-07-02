@@ -4,6 +4,7 @@ import Link from "next/link";
 import { connection } from "next/server";
 
 import { SiteHeader } from "@/components/site-header";
+import { getCurrentSetCollectionProgress } from "@/lib/collection/data";
 import { getPokemonSets } from "@/lib/pokemon-tcg/client";
 
 export const metadata: Metadata = {
@@ -15,6 +16,7 @@ export default async function SetsPage() {
   await connection();
 
   let sets = null;
+  let collectionProgress: Map<string, number> | null = null;
   let unavailable = false;
 
   try {
@@ -22,6 +24,12 @@ export default async function SetsPage() {
   } catch (error) {
     console.error("Set catalog page failed", error);
     unavailable = true;
+  }
+
+  try {
+    collectionProgress = await getCurrentSetCollectionProgress();
+  } catch (error) {
+    console.error("Set collection progress failed", error);
   }
 
   return (
@@ -80,6 +88,12 @@ export default async function SetsPage() {
                 <div className="mt-5 flex flex-wrap gap-x-4 gap-y-1 text-sm text-[var(--muted)]">
                   <span>{set.total.toLocaleString()} cards</span>
                   <span>{set.releaseDate}</span>
+                  {collectionProgress ? (
+                    <span className="font-semibold text-[var(--secondary)]">
+                      {(collectionProgress.get(set.id) ?? 0).toLocaleString()} /{" "}
+                      {set.total.toLocaleString()} owned
+                    </span>
+                  ) : null}
                 </div>
               </Link>
             ))}
