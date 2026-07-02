@@ -214,15 +214,20 @@ export async function getPokemonSet(id: string) {
 
 export async function getPokemonCardsBySet(set: PokemonTcgSet) {
   const pageSize = 250;
-  const totalPages = Math.max(1, Math.ceil(set.total / pageSize));
-  const cards: CardSearchResult[] = [];
-
-  for (let page = 1; page <= totalPages; page += 1) {
-    const payload = await fetchCards(`set.id:${escapeLucene(set.id)}`, page, pageSize);
-    cards.push(...payload.data.map(mapCard));
-
-    if (payload.count < pageSize) break;
-  }
+  const query = `set.id:${escapeLucene(set.id)}`;
+  const firstPayload = await fetchCards(query, 1, pageSize);
+  const totalPages = Math.max(1, Math.ceil(firstPayload.totalCount / pageSize));
+  const remainingPayloads =
+    totalPages > 1
+      ? await Promise.all(
+          Array.from({ length: totalPages - 1 }, (_, index) =>
+            fetchCards(query, index + 2, pageSize),
+          ),
+        )
+      : [];
+  const cards = [firstPayload, ...remainingPayloads].flatMap((payload) =>
+    payload.data.map(mapCard),
+  );
 
   return cards.sort((left, right) =>
     left.number.localeCompare(right.number, "en", { numeric: true }) ||
