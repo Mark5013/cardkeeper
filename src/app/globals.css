@@ -445,3 +445,18 @@ select {
   background: var(--secondary);
   color: var(--secondary-contrast);
 }
+
+.search-loading-spinner {
+  width: 1.2rem;
+  height: 1.2rem;
+  border: 2px solid rgb(143 183 255 / 22%);
+  border-top-color: var(--secondary);
+  border-radius: 9999px;
+  animation: search-loading-spin 700ms linear infinite;
+}
+
+@keyframes search-loading-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
