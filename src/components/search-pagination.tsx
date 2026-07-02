@@ -33,7 +33,7 @@ export function SearchPagination({
   return (
     <nav className="mt-10 flex flex-wrap items-center justify-center gap-2" aria-label="Search result pages">
       {currentPage > 1 ? (
-        <Link className="pagination-link" href={searchHref(query, currentPage - 1)} rel="prev">
+        <Link className="pagination-link" href={searchHref(query, currentPage - 1)} prefetch rel="prev">
           ← Previous
         </Link>
       ) : (
@@ -48,6 +48,7 @@ export function SearchPagination({
             className="pagination-link min-w-10 justify-center"
             data-active={item === currentPage}
             href={searchHref(query, item)}
+            prefetch={item !== currentPage}
             aria-current={item === currentPage ? "page" : undefined}
             key={item}
           >
@@ -57,7 +58,7 @@ export function SearchPagination({
       )}
 
       {currentPage < totalPages ? (
-        <Link className="pagination-link" href={searchHref(query, currentPage + 1)} rel="next">
+        <Link className="pagination-link" href={searchHref(query, currentPage + 1)} prefetch rel="next">
           Next →
         </Link>
       ) : (
