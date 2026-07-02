@@ -10,6 +10,7 @@ import type {
   PokemonTcgSet,
   PokemonTcgSetResponse,
   PokemonTcgSetsResponse,
+  SetCardsPayload,
 } from "./types";
 
 const API_BASE_URL = "https://api.pokemontcg.io/v2";
@@ -139,12 +140,17 @@ function rankClosestCards(cards: PokemonTcgCard[], parsedQuery: ParsedCardQuery)
   });
 }
 
-async function fetchCards(query: string, page: number, pageSize: number) {
+async function fetchCards(
+  query: string,
+  page: number,
+  pageSize: number,
+  orderBy = "-set.releaseDate,name,number",
+) {
   const params = new URLSearchParams({
     q: query,
     page: String(page),
     pageSize: String(pageSize),
-    orderBy: "-set.releaseDate,name,number",
+    orderBy,
     select: "id,name,number,rarity,artist,images,set,tcgplayer",
   });
 
@@ -212,27 +218,45 @@ export async function getPokemonSet(id: string) {
   return payload.data;
 }
 
-export async function getPokemonCardsBySet(set: PokemonTcgSet) {
-  const pageSize = 250;
-  const query = `set.id:${escapeLucene(set.id)}`;
-  const firstPayload = await fetchCards(query, 1, pageSize);
-  const totalPages = Math.max(1, Math.ceil(firstPayload.totalCount / pageSize));
-  const remainingPayloads =
-    totalPages > 1
-      ? await Promise.all(
-          Array.from({ length: totalPages - 1 }, (_, index) =>
-            fetchCards(query, index + 2, pageSize),
-          ),
-        )
-      : [];
-  const cards = [firstPayload, ...remainingPayloads].flatMap((payload) =>
-    payload.data.map(mapCard),
-  );
-
-  return cards.sort((left, right) =>
+function sortSetCards(cards: CardSearchResult[]) {
+  return [...cards].sort((left, right) =>
     left.number.localeCompare(right.number, "en", { numeric: true }) ||
     left.name.localeCompare(right.name, "en", { sensitivity: "base" }),
   );
+}
+
+export async function getPokemonCardsBySetPage(input: {
+  setId: string;
+  page?: number;
+  pageSize?: number;
+}): Promise<SetCardsPayload> {
+  const page = input.page ?? 1;
+  const pageSize = input.pageSize ?? 250;
+  const query = `set.id:${escapeLucene(input.setId)}`;
+  const payload = await fetchCards(query, page, pageSize, "number,name");
+
+  return {
+    cards: sortSetCards(payload.data.map(mapCard)),
+    totalCount: payload.totalCount,
+    page,
+    pageSize,
+    totalPages: Math.ceil(payload.totalCount / pageSize),
+  };
+}
+
+export async function getPokemonCardsBySet(set: PokemonTcgSet) {
+  const firstPayload = await getPokemonCardsBySetPage({ setId: set.id });
+  const remainingPayloads =
+    firstPayload.totalPages > 1
+      ? await Promise.all(
+          Array.from({ length: firstPayload.totalPages - 1 }, (_, index) =>
+            getPokemonCardsBySetPage({ setId: set.id, page: index + 2 }),
+          ),
+        )
+      : [];
+  const cards = [firstPayload, ...remainingPayloads].flatMap((payload) => payload.cards);
+
+  return sortSetCards(cards);
 }
 
 export function parseCardSearchQuery(query: string): ParsedCardQuery {

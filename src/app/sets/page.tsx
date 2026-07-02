@@ -15,21 +15,21 @@ export const metadata: Metadata = {
 export default async function SetsPage() {
   await connection();
 
-  let sets = null;
-  let collectionProgress: Map<string, number> | null = null;
-  let unavailable = false;
+  const [setsResult, collectionProgressResult] = await Promise.allSettled([
+    getPokemonSets(),
+    getCurrentSetCollectionProgress(),
+  ]);
+  const sets = setsResult.status === "fulfilled" ? setsResult.value : null;
+  const collectionProgress =
+    collectionProgressResult.status === "fulfilled" ? collectionProgressResult.value : null;
+  const unavailable = setsResult.status === "rejected";
 
-  try {
-    sets = await getPokemonSets();
-  } catch (error) {
-    console.error("Set catalog page failed", error);
-    unavailable = true;
+  if (setsResult.status === "rejected") {
+    console.error("Set catalog page failed", setsResult.reason);
   }
 
-  try {
-    collectionProgress = await getCurrentSetCollectionProgress();
-  } catch (error) {
-    console.error("Set collection progress failed", error);
+  if (collectionProgressResult.status === "rejected") {
+    console.error("Set collection progress failed", collectionProgressResult.reason);
   }
 
   return (

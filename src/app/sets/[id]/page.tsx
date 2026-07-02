@@ -4,9 +4,9 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { connection } from "next/server";
 
-import { CardResultGrid } from "@/components/card-result-grid";
+import { SetCardsBrowser } from "@/components/set-cards-browser";
 import { SiteHeader } from "@/components/site-header";
-import { getPokemonCardsBySet, getPokemonSet } from "@/lib/pokemon-tcg/client";
+import { getPokemonCardsBySetPage, getPokemonSet } from "@/lib/pokemon-tcg/client";
 
 export async function generateMetadata({
   params,
@@ -36,7 +36,7 @@ export default async function SetDetailPage({ params }: { params: Promise<{ id: 
   let unavailable = false;
 
   try {
-    cards = await getPokemonCardsBySet(set);
+    cards = await getPokemonCardsBySetPage({ setId: set.id });
   } catch (error) {
     console.error("Set cards page failed", { setId: id, error });
     unavailable = true;
@@ -73,22 +73,7 @@ export default async function SetDetailPage({ params }: { params: Promise<{ id: 
           </div>
         ) : null}
 
-        {cards ? (
-          <div className="mt-10">
-            <div className="mb-6 flex flex-wrap items-end justify-between gap-3">
-              <div>
-                <p className="text-sm font-semibold text-[var(--accent)]">Set cards</p>
-                <h2 className="mt-1 text-2xl font-bold">
-                  {cards.length.toLocaleString()} {cards.length === 1 ? "card" : "cards"}
-                </h2>
-              </div>
-              <p className="max-w-md text-sm text-[var(--muted)]">
-                Cards are sorted by printed card number.
-              </p>
-            </div>
-            <CardResultGrid cards={cards} />
-          </div>
-        ) : null}
+        {cards ? <SetCardsBrowser key={set.id} setId={set.id} initialResult={cards} /> : null}
       </section>
     </main>
   );

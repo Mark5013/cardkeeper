@@ -157,3 +157,11 @@ export type CardSearchPayload = {
   pageSize: number;
   totalPages: number;
 };
+
+export type SetCardsPayload = {
+  cards: CardSearchResult[];
+  totalCount: number;
+  page: number;
+  pageSize: number;
+  totalPages: number;
+};
