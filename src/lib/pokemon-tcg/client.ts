@@ -16,7 +16,7 @@ import type {
 const API_BASE_URL = "https://api.pokemontcg.io/v2";
 const CARD_NUMBER_PATTERN = /^(?=.*\d)[a-z0-9]+(?:[-/][a-z0-9]+)*$/i;
 
-function normalize(value: string) {
+export function normalize(value: string) {
   return value.trim().toLocaleLowerCase("en-US");
 }
 
@@ -65,7 +65,7 @@ function buildRelaxedNameQuery(name: string) {
   return `name:${escapeLucene(longestTerm.slice(0, stemLength))}*`;
 }
 
-function levenshtein(left: string, right: string) {
+export function levenshtein(left: string, right: string) {
   const previous = Array.from({ length: right.length + 1 }, (_, index) => index);
 
   for (let leftIndex = 1; leftIndex <= left.length; leftIndex += 1) {

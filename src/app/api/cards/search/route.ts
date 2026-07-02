@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 
-import { searchPokemonCards } from "@/lib/pokemon-tcg/client";
+import { searchCatalogPokemonCards } from "@/lib/catalog/data";
 
 const searchSchema = z.object({
   query: z.string().trim().min(1, "Enter a card name or number.").max(110),
@@ -22,7 +22,7 @@ export async function GET(request: Request) {
   }
 
   try {
-    return NextResponse.json(await searchPokemonCards(parsed.data));
+    return NextResponse.json(await searchCatalogPokemonCards(parsed.data));
   } catch (error) {
     console.error("Card search failed", error);
     return NextResponse.json(

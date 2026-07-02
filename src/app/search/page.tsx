@@ -4,7 +4,7 @@ import { redirect } from "next/navigation";
 import { CardSearch } from "@/components/card-search";
 import { SearchResultsBrowser } from "@/components/search-results-browser";
 import { SiteHeader } from "@/components/site-header";
-import { searchPokemonCards } from "@/lib/pokemon-tcg/client";
+import { searchCatalogPokemonCards } from "@/lib/catalog/data";
 
 export const metadata: Metadata = {
   title: "Card search",
@@ -32,7 +32,7 @@ export default async function SearchPage({
 
   if (query) {
     try {
-      result = await searchPokemonCards({ query, mode: "search", page: 1, pageSize: 24 });
+      result = await searchCatalogPokemonCards({ query, mode: "search", page: 1, pageSize: 24 });
     } catch (error) {
       console.error("Search results page failed", error);
       unavailable = true;

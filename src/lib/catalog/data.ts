@@ -10,14 +10,27 @@ import {
   getPokemonCardsBySetPage,
   getPokemonSet,
   getPokemonSets,
+  levenshtein,
+  normalize,
+  parseCardSearchQuery,
+  searchPokemonCards,
 } from "@/lib/pokemon-tcg/client";
 import type {
+  CardSearchPayload,
   CardSearchResult,
   PokemonTcgCard,
   PokemonTcgPrice,
   PokemonTcgSet,
   SetCardsPayload,
 } from "@/lib/pokemon-tcg/types";
+
+function normalizeCardNumber(value: string) {
+  return normalize(value).replace(/^#/, "");
+}
+
+function tokenizeSearchName(value: string) {
+  return normalize(value).split(/\s+/).filter(Boolean);
+}
 
 function mapSet(row: typeof cardSets.$inferSelect): PokemonTcgSet {
   return {
@@ -74,6 +87,37 @@ function mapCard(row: typeof cards.$inferSelect): PokemonTcgCard | null {
   const providerCard = row.providerData as unknown as PokemonTcgCard | null;
 
   return providerCard?.id ? providerCard : null;
+}
+
+function rankClosestCards(cardsToRank: CardSearchResult[], query: string) {
+  return [...cardsToRank].sort(
+    (left, right) =>
+      levenshtein(normalize(query), normalize(left.name)) -
+        levenshtein(normalize(query), normalize(right.name)) ||
+      left.name.localeCompare(right.name, "en", { sensitivity: "base" }) ||
+      left.number.localeCompare(right.number, "en", { numeric: true }),
+  );
+}
+
+function paginateCards(input: {
+  cards: CardSearchResult[];
+  page: number;
+  pageSize: number;
+  matchType: CardSearchPayload["matchType"];
+  parsedQuery: CardSearchPayload["parsedQuery"];
+}): CardSearchPayload {
+  const start = (input.page - 1) * input.pageSize;
+  const pageCards = input.cards.slice(start, start + input.pageSize);
+
+  return {
+    cards: pageCards,
+    totalCount: input.cards.length,
+    matchType: input.matchType,
+    parsedQuery: input.parsedQuery,
+    page: input.page,
+    pageSize: input.pageSize,
+    totalPages: Math.ceil(input.cards.length / input.pageSize),
+  };
 }
 
 export const getCatalogPokemonSets = cache(async () => {
@@ -192,3 +236,104 @@ export const getCatalogPokemonCard = cache(async (id: string) => {
 
   return getPokemonCard(id);
 });
+
+export async function searchCatalogPokemonCards(input: {
+  query: string;
+  mode?: "search" | "suggest";
+  page?: number;
+  pageSize?: number;
+}): Promise<CardSearchPayload> {
+  const parsedQuery = parseCardSearchQuery(input.query);
+  const page = input.page ?? 1;
+  const pageSize = input.pageSize ?? (input.mode === "suggest" ? 6 : 20);
+  const nameTokens = parsedQuery.name ? tokenizeSearchName(parsedQuery.name) : [];
+  const normalizedNumber = parsedQuery.number ? normalizeCardNumber(parsedQuery.number) : null;
+
+  if (!parsedQuery.name && !parsedQuery.number) {
+    return {
+      cards: [],
+      totalCount: 0,
+      matchType: "closest",
+      parsedQuery,
+      page,
+      pageSize,
+      totalPages: 0,
+    };
+  }
+
+  try {
+    const conditions = [eq(cards.languageCode, "en")];
+
+    for (const token of nameTokens) {
+      conditions.push(sql`lower(${cards.name}) like ${`${token}%`}`);
+    }
+
+    if (normalizedNumber) {
+      conditions.push(sql`lower(${cards.number}) = ${normalizedNumber}`);
+    }
+
+    const rows = await db
+      .select({ card: cards, set: cardSets })
+      .from(cards)
+      .innerJoin(cardSets, eq(cards.setId, cardSets.id))
+      .where(and(...conditions))
+      .orderBy(
+        asc(cards.name),
+        sql`case when ${cards.number} ~ '^[0-9]+' then substring(${cards.number} from '^[0-9]+')::integer else null end asc nulls last`,
+        asc(cards.number),
+        asc(cards.providerId),
+      )
+      .limit(input.mode === "suggest" ? pageSize : 250);
+    const matchedCards = rows.map(mapCardSearchResult);
+
+    if (input.mode === "suggest") {
+      return paginateCards({
+        cards: matchedCards,
+        page,
+        pageSize,
+        matchType: "suggestions",
+        parsedQuery,
+      });
+    }
+
+    if (matchedCards.length > 0) {
+      return paginateCards({
+        cards: matchedCards,
+        page,
+        pageSize,
+        matchType: "matches",
+        parsedQuery,
+      });
+    }
+
+    if (parsedQuery.name) {
+      const relaxedToken = tokenizeSearchName(parsedQuery.name)
+        .sort((left, right) => right.length - left.length)[0];
+
+      if (relaxedToken) {
+        const relaxedRows = await db
+          .select({ card: cards, set: cardSets })
+          .from(cards)
+          .innerJoin(cardSets, eq(cards.setId, cardSets.id))
+          .where(
+            and(eq(cards.languageCode, "en"), sql`lower(${cards.name}) like ${`${relaxedToken.slice(0, 3)}%`}`),
+          )
+          .orderBy(asc(cards.name), asc(cards.number), asc(cards.providerId))
+          .limit(250);
+        const closestCards = rankClosestCards(relaxedRows.map(mapCardSearchResult), parsedQuery.name);
+
+        return paginateCards({
+          cards: closestCards,
+          page,
+          pageSize,
+          matchType: "closest",
+          parsedQuery,
+        });
+      }
+    }
+  } catch (error) {
+    console.error("Local card search failed, falling back to provider", error);
+  }
+
+  return searchPokemonCards(input);
+}
