@@ -28,8 +28,12 @@ function normalizeCardNumber(value: string) {
   return normalize(value).replace(/^#/, "");
 }
 
+function normalizeSearchText(value: string) {
+  return normalize(value).replace(/[^a-z0-9]+/g, " ").trim();
+}
+
 function tokenizeSearchName(value: string) {
-  return normalize(value).split(/\s+/).filter(Boolean);
+  return normalizeSearchText(value).split(/\s+/).filter(Boolean);
 }
 
 function mapSet(row: typeof cardSets.$inferSelect): PokemonTcgSet {
@@ -118,6 +122,76 @@ function paginateCards(input: {
     pageSize: input.pageSize,
     totalPages: Math.ceil(input.cards.length / input.pageSize),
   };
+}
+
+function normalizedCardNameSql() {
+  return sql<string>`trim(regexp_replace(lower(${cards.name}), '[^a-z0-9]+', ' ', 'g'))`;
+}
+
+function localSearchConditions(input: {
+  name: string | null;
+  nameTokens: string[];
+  normalizedNumber: string | null;
+  strategy: "phrase" | "tokens";
+}) {
+  const conditions = [eq(cards.languageCode, "en")];
+
+  if (input.name && input.strategy === "phrase") {
+    conditions.push(sql`${normalizedCardNameSql()} like ${`${normalizeSearchText(input.name)}%`}`);
+  }
+
+  if (input.strategy === "tokens" && input.nameTokens.length > 0) {
+    const [firstToken, ...remainingTokens] = input.nameTokens;
+    conditions.push(sql`${normalizedCardNameSql()} like ${`${firstToken}%`}`);
+
+    for (const token of remainingTokens) {
+      conditions.push(sql`${normalizedCardNameSql()} like ${`% ${token}%`}`);
+    }
+  }
+
+  if (input.normalizedNumber) {
+    conditions.push(sql`lower(${cards.number}) = ${input.normalizedNumber}`);
+  }
+
+  return and(...conditions);
+}
+
+async function queryLocalSearchPage(input: {
+  name: string | null;
+  nameTokens: string[];
+  normalizedNumber: string | null;
+  strategy: "phrase" | "tokens";
+  page: number;
+  pageSize: number;
+}) {
+  const whereSearch = localSearchConditions(input);
+  const offset = (input.page - 1) * input.pageSize;
+  const [totalRow] = await db
+    .select({ count: sql<number>`count(*)::integer` })
+    .from(cards)
+    .innerJoin(cardSets, eq(cards.setId, cardSets.id))
+    .where(whereSearch);
+  const totalCount = totalRow?.count ?? 0;
+
+  if (totalCount === 0) {
+    return { rows: [], totalCount };
+  }
+
+  const rows = await db
+    .select({ card: cards, set: cardSets })
+    .from(cards)
+    .innerJoin(cardSets, eq(cards.setId, cardSets.id))
+    .where(whereSearch)
+    .orderBy(
+      asc(cards.name),
+      sql`case when ${cards.number} ~ '^[0-9]+' then substring(${cards.number} from '^[0-9]+')::integer else null end asc nulls last`,
+      asc(cards.number),
+      asc(cards.providerId),
+    )
+    .limit(input.pageSize)
+    .offset(offset);
+
+  return { rows, totalCount };
 }
 
 export const getCatalogPokemonSets = cache(async () => {
@@ -249,7 +323,7 @@ export async function searchCatalogPokemonCards(input: {
   const nameTokens = parsedQuery.name ? tokenizeSearchName(parsedQuery.name) : [];
   const normalizedNumber = parsedQuery.number ? normalizeCardNumber(parsedQuery.number) : null;
 
-  if (!parsedQuery.name && !parsedQuery.number) {
+  if ((!parsedQuery.name || nameTokens.length === 0) && !parsedQuery.number) {
     return {
       cards: [],
       totalCount: 0,
@@ -262,48 +336,48 @@ export async function searchCatalogPokemonCards(input: {
   }
 
   try {
-    const conditions = [eq(cards.languageCode, "en")];
+    let localResult = await queryLocalSearchPage({
+      name: parsedQuery.name,
+      nameTokens,
+      normalizedNumber,
+      strategy: "phrase",
+      page,
+      pageSize,
+    });
 
-    for (const token of nameTokens) {
-      conditions.push(sql`lower(${cards.name}) like ${`${token}%`}`);
-    }
-
-    if (normalizedNumber) {
-      conditions.push(sql`lower(${cards.number}) = ${normalizedNumber}`);
-    }
-
-    const rows = await db
-      .select({ card: cards, set: cardSets })
-      .from(cards)
-      .innerJoin(cardSets, eq(cards.setId, cardSets.id))
-      .where(and(...conditions))
-      .orderBy(
-        asc(cards.name),
-        sql`case when ${cards.number} ~ '^[0-9]+' then substring(${cards.number} from '^[0-9]+')::integer else null end asc nulls last`,
-        asc(cards.number),
-        asc(cards.providerId),
-      )
-      .limit(input.mode === "suggest" ? pageSize : 250);
-    const matchedCards = rows.map(mapCardSearchResult);
-
-    if (input.mode === "suggest") {
-      return paginateCards({
-        cards: matchedCards,
+    if (localResult.totalCount === 0 && nameTokens.length > 0) {
+      localResult = await queryLocalSearchPage({
+        name: parsedQuery.name,
+        nameTokens,
+        normalizedNumber,
+        strategy: "tokens",
         page,
         pageSize,
+      });
+    }
+
+    if (input.mode === "suggest" && localResult.totalCount > 0) {
+      return {
+        cards: localResult.rows.map(mapCardSearchResult),
+        totalCount: localResult.totalCount,
         matchType: "suggestions",
         parsedQuery,
-      });
-    }
-
-    if (matchedCards.length > 0) {
-      return paginateCards({
-        cards: matchedCards,
         page,
         pageSize,
+        totalPages: Math.ceil(localResult.totalCount / pageSize),
+      };
+    }
+
+    if (localResult.totalCount > 0) {
+      return {
+        cards: localResult.rows.map(mapCardSearchResult),
+        totalCount: localResult.totalCount,
         matchType: "matches",
         parsedQuery,
-      });
+        page,
+        pageSize,
+        totalPages: Math.ceil(localResult.totalCount / pageSize),
+      };
     }
 
     if (parsedQuery.name) {
