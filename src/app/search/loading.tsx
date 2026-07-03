@@ -1,4 +1,3 @@
-import { CardSearch } from "@/components/card-search";
 import { SiteHeader } from "@/components/site-header";
 
 function LoadingCard() {
@@ -27,8 +26,21 @@ export default function SearchLoading() {
         <p className="eyebrow">Catalog results</p>
         <div className="mt-5 h-12 max-w-md rounded-full bg-[var(--surface-2)]" />
 
-        <div className="mt-8">
-          <CardSearch />
+        <div className="search-panel mt-8 p-5 sm:p-7">
+          <div className="flex flex-col justify-between gap-2 sm:flex-row sm:items-end">
+            <div>
+              <div className="h-3 w-28 rounded-full bg-[var(--surface-2)]" />
+              <div className="mt-3 h-7 w-48 rounded-full bg-[var(--surface-2)]" />
+            </div>
+            <div className="h-4 w-36 rounded-full bg-[var(--surface-2)]" />
+          </div>
+          <div className="mt-6 grid gap-4 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-end">
+            <div>
+              <div className="h-3 w-44 rounded-full bg-[var(--surface-2)]" />
+              <div className="mt-2 h-12 rounded-full bg-[var(--surface-2)]" />
+            </div>
+            <div className="h-12 rounded-full bg-[var(--surface-2)] sm:w-36" />
+          </div>
         </div>
 
         <div className="mt-12">
