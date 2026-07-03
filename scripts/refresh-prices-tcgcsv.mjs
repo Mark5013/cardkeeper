@@ -11,6 +11,7 @@ const DEFAULT_PAGE_DELAY_MS = 100;
 const DEFAULT_MAX_RETRIES = 4;
 const WRITE_BATCH_SIZE = 500;
 const USER_AGENT = process.env.TCGCSV_USER_AGENT ?? "Cardkeeper/0.1.0 (+https://github.com/Mark5013/cardkeeper)";
+const SPLIT_SET_MARKERS = ["latias", "latios", "plusle", "minun"];
 const SUPPLEMENTAL_GROUP_TERMS = [
   "academy",
   "blister",
@@ -31,6 +32,41 @@ const SUPPLEMENTAL_GROUP_TERMS = [
   "trainer kit",
   "world championship",
 ];
+const SET_NAME_ALIASES = new Map(
+  [
+    ["Best of Promos", ["Best of Game"]],
+    ["Ruby and Sapphire", ["Ruby & Sapphire"]],
+    ["EX Trainer Kit 1: Latias & Latios", ["EX Trainer Kit Latias", "EX Trainer Kit Latios"]],
+    ["EX Trainer Kit 2: Plusle & Minun", ["EX Trainer Kit 2 Plusle", "EX Trainer Kit 2 Minun"]],
+    ["Diamond and Pearl", ["Diamond & Pearl"]],
+    ["Black and White", ["Black & White"]],
+    ["McDonald's Promos 2011", ["McDonald's Collection 2011"]],
+    ["McDonald's Promos 2012", ["McDonald's Collection 2012"]],
+    ["McDonald's Promos 2014", ["McDonald's Collection 2014"]],
+    ["McDonald's Promos 2015", ["McDonald's Collection 2015"]],
+    ["McDonald's Promos 2016", ["McDonald's Collection 2016"]],
+    ["McDonald's Promos 2017", ["McDonald's Collection 2017"]],
+    ["McDonald's Promos 2018", ["McDonald's Collection 2018"]],
+    ["McDonald's Promos 2019", ["McDonald's Collection 2019"]],
+    ["McDonald's Promos 2022", ["McDonald's Collection 2022"]],
+    ["SM - Burning Shadows", ["Burning Shadows"]],
+    ["SM Base Set", ["Sun & Moon"]],
+    ["WoTC Promo", "Wizards Black Star Promos"],
+    ["Nintendo Promos", "Nintendo Black Star Promos"],
+    ["Diamond and Pearl Promos", "DP Black Star Promos"],
+    ["HGSS Promos", "HGSS Black Star Promos"],
+    ["Black and White Promos", "BW Black Star Promos"],
+    ["XY Promos", "XY Black Star Promos"],
+    ["SM Promos", "SM Black Star Promos"],
+    ["SWSH: Sword & Shield Promo Cards", "SWSH Black Star Promos"],
+    ["Sword & Shield Promo Cards", "SWSH Black Star Promos"],
+    ["SV: Scarlet & Violet Promo Cards", "Scarlet & Violet Promos"],
+    ["Scarlet & Violet Promo Cards", "Scarlet & Violet Promos"],
+  ].map(([groupName, setNames]) => [
+    normalizeSetName(groupName),
+    (Array.isArray(setNames) ? setNames : [setNames]).map((setName) => normalizeSetName(setName)),
+  ]),
+);
 
 loadEnvConfig(process.cwd());
 
@@ -139,9 +175,9 @@ async function refreshPrices() {
 
   for (const group of groups) {
     stats.groupsChecked += 1;
-    const localSet = findLocalSetForGroup(group, setMatchers);
+    const localSetsForGroup = findLocalSetsForGroup(group, setMatchers);
 
-    if (!localSet) {
+    if (localSetsForGroup.length === 0) {
       console.log(`Skipping ${group.name} (${group.groupId}): no local set match.`);
       continue;
     }
@@ -152,69 +188,37 @@ async function refreshPrices() {
     const pricesPayload = await fetchTcgcsvJson(`/tcgplayer/${POKEMON_CATEGORY_ID}/${group.groupId}/prices`);
     const cardProducts = productsPayload.results.filter(isCardProduct);
     const pricesByProductId = groupPricesByProductId(pricesPayload.results);
-    const localCards = await getLocalCardsForSet(localSet.id);
-    const localCardsByNumber = new Map(localCards.map((card) => [normalizeCardNumber(card.number), card]));
-    const amountsByCardPrinting = new Map();
-    const priceRecords = [];
+    const groupPriceRecords = [];
+    const groupMatches = [];
 
     stats.productsChecked += cardProducts.length;
 
-    for (const product of cardProducts) {
-      const cardNumber = getExtendedDataValue(product, "Number");
-      const localCard = cardNumber ? localCardsByNumber.get(normalizeCardNumber(cardNumber)) : null;
-      const productPrices = pricesByProductId.get(product.productId) ?? [];
+    for (const localSet of localSetsForGroup) {
+      const setPriceRecords = await preparePriceRecordsForSet({
+        cardProducts,
+        localSet,
+        observedAt,
+        pricesByProductId,
+        requireNameMatch: localSetsForGroup.length > 1,
+      });
 
-      if (!localCard || productPrices.length === 0) continue;
-
-      stats.productsMatched += 1;
-
-      for (const price of productPrices) {
-        const printing = normalizePrinting(price.subTypeName);
-        const amountRecords = getAmountRecords(price);
-
-        if (amountRecords.length === 0) continue;
-
-        amountsByCardPrinting.set(getCardPrintingKey(localCard.id, printing), {
-          cardId: localCard.id,
-          printing,
-          amountRecords,
-        });
-      }
+      stats.productsMatched += setPriceRecords.productsMatched;
+      groupPriceRecords.push(...setPriceRecords.priceRecords);
+      groupMatches.push(
+        `${localSet.name}: ${setPriceRecords.productsMatched.toLocaleString()} matched, ${setPriceRecords.priceRecords.length.toLocaleString()} observations`,
+      );
     }
 
-    const variantIdsByCardPrinting = await getVariantIdsByCardPrinting(
-      Array.from(amountsByCardPrinting.values()),
-      options.dryRun,
-    );
+    stats.priceRowsPrepared += groupPriceRecords.length;
 
-    for (const priceInput of amountsByCardPrinting.values()) {
-      const variantIds =
-        variantIdsByCardPrinting.get(getCardPrintingKey(priceInput.cardId, priceInput.printing)) ?? [];
-
-      for (const cardVariantId of variantIds) {
-        for (const amountRecord of priceInput.amountRecords) {
-          priceRecords.push({
-            card_variant_id: cardVariantId,
-            source: SOURCE,
-            price_type: amountRecord.priceType,
-            currency: CURRENCY,
-            amount_minor: amountRecord.amountMinor,
-            observed_at: observedAt,
-          });
-        }
-      }
-    }
-
-    stats.priceRowsPrepared += priceRecords.length;
-
-    if (!options.dryRun && priceRecords.length > 0) {
-      const writeStats = await writePrices(priceRecords);
+    if (!options.dryRun && groupPriceRecords.length > 0) {
+      const writeStats = await writePrices(groupPriceRecords);
       stats.currentPricesUpserted += writeStats.currentPricesUpserted;
       stats.pricePointsInserted += writeStats.pricePointsInserted;
     }
 
     console.log(
-      `${group.name} (${group.groupId}) -> ${localSet.name}: ${cardProducts.length.toLocaleString()} card products, ${priceRecords.length.toLocaleString()} price observations prepared.`,
+      `${group.name} (${group.groupId}) -> ${groupMatches.join("; ")}. ${cardProducts.length.toLocaleString()} card products checked.`,
     );
 
     if (options.pageDelayMs > 0) {
@@ -226,6 +230,96 @@ async function refreshPrices() {
   console.log(
     `TCGCSV price refresh complete in ${elapsedSeconds}s. ${stats.groupsMatched}/${stats.groupsChecked} groups matched, ${stats.productsMatched}/${stats.productsChecked} products matched, ${stats.priceRowsPrepared.toLocaleString()} observations prepared, ${stats.currentPricesUpserted.toLocaleString()} current prices upserted, ${stats.pricePointsInserted.toLocaleString()} price points inserted.`,
   );
+}
+
+async function preparePriceRecordsForSet({
+  cardProducts,
+  localSet,
+  observedAt,
+  pricesByProductId,
+  requireNameMatch,
+}) {
+  const localCards = await getLocalCardsForSet(localSet.id);
+  const localCardsByNumber = new Map(localCards.map((card) => [normalizeCardNumber(card.number), card]));
+  const localCardsByNumberAndName = new Map(
+    localCards.map((card) => [getCardNumberAndNameKey(card.number, card.name), card]),
+  );
+  const amountsByCardPrinting = new Map();
+  const priceRecords = [];
+  let productsMatched = 0;
+
+  for (const product of cardProducts) {
+    const cardNumber = getExtendedDataValue(product, "Number");
+    const localCard = cardNumber
+      ? requireNameMatch
+        ? getNameMatchedLocalCard(product, cardNumber, localSet, localCardsByNumberAndName)
+        : localCardsByNumber.get(normalizeCardNumber(cardNumber))
+      : null;
+    const productPrices = pricesByProductId.get(product.productId) ?? [];
+
+    if (!localCard || productPrices.length === 0) continue;
+
+    productsMatched += 1;
+
+    for (const price of productPrices) {
+      const printing = normalizePrinting(price.subTypeName);
+      const amountRecords = getAmountRecords(price);
+
+      if (amountRecords.length === 0) continue;
+
+      amountsByCardPrinting.set(getCardPrintingKey(localCard.id, printing), {
+        cardId: localCard.id,
+        printing,
+        amountRecords,
+      });
+    }
+  }
+
+  const variantIdsByCardPrinting = await getVariantIdsByCardPrinting(
+    Array.from(amountsByCardPrinting.values()),
+    options.dryRun,
+  );
+
+  for (const priceInput of amountsByCardPrinting.values()) {
+    const variantIds =
+      variantIdsByCardPrinting.get(getCardPrintingKey(priceInput.cardId, priceInput.printing)) ?? [];
+
+    for (const cardVariantId of variantIds) {
+      for (const amountRecord of priceInput.amountRecords) {
+        priceRecords.push({
+          card_variant_id: cardVariantId,
+          source: SOURCE,
+          price_type: amountRecord.priceType,
+          currency: CURRENCY,
+          amount_minor: amountRecord.amountMinor,
+          observed_at: observedAt,
+        });
+      }
+    }
+  }
+
+  return { priceRecords, productsMatched };
+}
+
+function getNameMatchedLocalCard(product, cardNumber, localSet, localCardsByNumberAndName) {
+  if (hasOtherSplitSetMarker(product.name, localSet.name)) return null;
+
+  return localCardsByNumberAndName.get(getCardNumberAndNameKey(cardNumber, product.name));
+}
+
+function hasOtherSplitSetMarker(productName, localSetName) {
+  const localSetNormalized = normalizeCardName(localSetName);
+  const productMarkers = getParentheticalParts(productName).flatMap((part) => {
+    const normalizedPart = normalizeCardName(part);
+
+    return SPLIT_SET_MARKERS.filter((marker) => normalizedPart.includes(marker));
+  });
+
+  return productMarkers.length > 0 && productMarkers.every((marker) => !localSetNormalized.includes(marker));
+}
+
+function getParentheticalParts(value) {
+  return Array.from(String(value ?? "").matchAll(/\(([^)]*)\)/g), (match) => match[1]);
 }
 
 async function resetSourceRows() {
@@ -424,7 +518,7 @@ function buildLocalSetMatchers(localSets) {
   }));
 }
 
-function findLocalSetForGroup(group, setMatchers) {
+function findLocalSetsForGroup(group, setMatchers) {
   const normalizedGroupName = normalizeSetName(group.name);
   const groupCoreName = normalizeSetName(getGroupCoreName(group.name));
   const groupReleaseDate = group.publishedOn ? new Date(group.publishedOn).toISOString().slice(0, 10) : null;
@@ -433,11 +527,13 @@ function findLocalSetForGroup(group, setMatchers) {
       candidate.normalizedName === normalizedGroupName ||
       candidate.normalizedName === groupCoreName,
   )?.set;
+  const aliasMatches = findAliasedLocalSets([normalizedGroupName, groupCoreName], setMatchers);
 
-  if (exactMatch) return exactMatch;
-  if (isSupplementalGroupName(group.name)) return null;
+  if (exactMatch) return [exactMatch];
+  if (aliasMatches.length > 0) return aliasMatches;
+  if (isSupplementalGroupName(group.name)) return [];
 
-  return (
+  const fallbackMatch =
     setMatchers.find(
       (candidate) =>
         groupReleaseDate &&
@@ -446,8 +542,27 @@ function findLocalSetForGroup(group, setMatchers) {
         groupCoreName.length > 0 &&
         (candidate.normalizedName.includes(groupCoreName) ||
           groupCoreName.includes(candidate.normalizedName)),
-    )?.set ?? null
-  );
+    )?.set ?? null;
+
+  return fallbackMatch ? [fallbackMatch] : [];
+}
+
+function findAliasedLocalSets(groupNames, setMatchers) {
+  for (const groupName of groupNames) {
+    const aliasedSetNames = SET_NAME_ALIASES.get(groupName);
+
+    if (!aliasedSetNames) continue;
+
+    const aliasedSets = aliasedSetNames.flatMap((aliasedSetName) => {
+      const aliasedSet = setMatchers.find((candidate) => candidate.normalizedName === aliasedSetName)?.set;
+
+      return aliasedSet ? [aliasedSet] : [];
+    });
+
+    if (aliasedSets.length > 0) return aliasedSets;
+  }
+
+  return [];
 }
 
 function getGroupCoreName(value) {
@@ -456,6 +571,8 @@ function getGroupCoreName(value) {
 
 function normalizeSetName(value) {
   return value
+    .normalize("NFKD")
+    .replace(/[\u0300-\u036f]/g, "")
     .toLowerCase()
     .replace(/\bpokemon\b/g, "")
     .replace(/\bsv\d+\b|\bme\d+\b|\bswsh\d+\b|\bsm\d+\b|\bxy\d+\b/g, "")
@@ -515,6 +632,21 @@ function normalizeCardNumber(value) {
     .split("/")[0]
     .replace(/^0+(?=\d)/, "")
     .toLowerCase()
+    .trim();
+}
+
+function getCardNumberAndNameKey(number, name) {
+  return `${normalizeCardNumber(number)}:${normalizeCardName(name)}`;
+}
+
+function normalizeCardName(value) {
+  return String(value ?? "")
+    .normalize("NFKD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/\([^)]*\)/g, " ")
+    .toLowerCase()
+    .replace(/\bpokemon\b/g, "")
+    .replace(/[^a-z0-9]+/g, " ")
     .trim();
 }
 
