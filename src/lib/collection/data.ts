@@ -3,7 +3,7 @@ import "server-only";
 import { and, asc, desc, eq, ilike, inArray, or, sql } from "drizzle-orm";
 
 import { db } from "@/db";
-import { cards, cardSets, cardVariants, collectionItems } from "@/db/schema";
+import { cards, cardSets, cardVariants, collectionItems, currentPrices } from "@/db/schema";
 import { getCurrentUser } from "@/lib/supabase/auth";
 import { createClient } from "@/lib/supabase/server";
 import { getCardPrintingOptions } from "@/lib/pokemon-tcg/printing";
@@ -193,12 +193,16 @@ export async function getCurrentCollection(
     return emptyCollectionSummary({ page, pageSize });
   }
 
+  const currentMarketPrices = await getCurrentMarketPricesByVariantId(
+    rows.map(({ variant }) => variant.id),
+  );
   const allItems = rows.map(({ item, variant, card, set }) => {
     const providerCard = card.providerData as unknown as PokemonTcgCard | null;
     const price = providerCard
       ? getCardPrintingOptions(providerCard).find((option) => option.value === variant.printing)?.price
       : null;
-    const unitPriceUsd = price?.market ?? price?.mid ?? price?.low ?? null;
+    const unitPriceUsd =
+      currentMarketPrices.get(variant.id) ?? price?.market ?? price?.mid ?? price?.low ?? null;
     const estimatedValueUsd =
       unitPriceUsd === null ? null : (Math.round(unitPriceUsd * 100) * item.quantity) / 100;
 
@@ -258,6 +262,34 @@ export async function getCurrentCollection(
     totalPages: Math.ceil(totalItems / effectivePageSize),
     hasNextPage: page * effectivePageSize < totalItems,
   };
+}
+
+async function getCurrentMarketPricesByVariantId(variantIds: string[]) {
+  const uniqueVariantIds = Array.from(new Set(variantIds));
+  const pricesByVariantId = new Map<string, number>();
+
+  if (uniqueVariantIds.length === 0) return pricesByVariantId;
+
+  const priceRows = await db
+    .select({
+      cardVariantId: currentPrices.cardVariantId,
+      amountMinor: currentPrices.amountMinor,
+    })
+    .from(currentPrices)
+    .where(
+      and(
+        eq(currentPrices.source, "tcgcsv"),
+        eq(currentPrices.priceType, "market"),
+        eq(currentPrices.currency, "USD"),
+        inArray(currentPrices.cardVariantId, uniqueVariantIds),
+      ),
+    );
+
+  for (const row of priceRows) {
+    pricesByVariantId.set(row.cardVariantId, row.amountMinor / 100);
+  }
+
+  return pricesByVariantId;
 }
 
 export async function getOwnedCardVariants(

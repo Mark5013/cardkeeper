@@ -1,10 +1,10 @@
 import "server-only";
 
 import { cache } from "react";
-import { and, asc, eq, sql } from "drizzle-orm";
+import { and, asc, eq, inArray, sql } from "drizzle-orm";
 
 import { db } from "@/db";
-import { cards, cardSets } from "@/db/schema";
+import { cards, cardSets, cardVariants, currentPrices } from "@/db/schema";
 import {
   getPokemonCard,
   getPokemonCardsBySetPage,
@@ -65,6 +65,7 @@ function getStartingMarketPrice(card: PokemonTcgCard) {
 function mapCardSearchResult(input: {
   card: typeof cards.$inferSelect;
   set: typeof cardSets.$inferSelect;
+  currentMarketPriceUsd?: number | null;
 }): CardSearchResult {
   const providerCard = input.card.providerData as unknown as PokemonTcgCard | null;
 
@@ -81,7 +82,8 @@ function mapCardSearchResult(input: {
       name: input.set.name,
       series: input.set.series ?? "",
     },
-    startingPriceUsd: providerCard ? getStartingMarketPrice(providerCard) : null,
+    startingPriceUsd:
+      input.currentMarketPriceUsd ?? (providerCard ? getStartingMarketPrice(providerCard) : null),
     priceUpdatedAt: providerCard?.tcgplayer?.updatedAt ?? null,
   };
 }
@@ -90,6 +92,34 @@ function mapCard(row: typeof cards.$inferSelect): PokemonTcgCard | null {
   const providerCard = row.providerData as unknown as PokemonTcgCard | null;
 
   return providerCard?.id ? providerCard : null;
+}
+
+async function mapCardWithCurrentPrices(row: typeof cards.$inferSelect) {
+  const providerCard = mapCard(row);
+
+  if (!providerCard) return null;
+
+  const currentPricesByPrinting = await getCurrentPricesForCardId(row.id);
+
+  if (currentPricesByPrinting.size === 0) return providerCard;
+
+  const observedAt = Array.from(currentPricesByPrinting.values())
+    .map((price) => price.observedAt)
+    .sort((left, right) => right.getTime() - left.getTime())[0];
+
+  return {
+    ...providerCard,
+    tcgplayer: {
+      url: providerCard.tcgplayer?.url ?? "",
+      updatedAt: observedAt ? observedAt.toISOString().slice(0, 10) : providerCard.tcgplayer?.updatedAt ?? "",
+      prices: Object.fromEntries(
+        Array.from(currentPricesByPrinting, ([printing, price]) => [
+          toTcgplayerPriceKey(printing),
+          price.price,
+        ]),
+      ),
+    },
+  };
 }
 
 function normalizedCardNameSql() {
@@ -209,6 +239,101 @@ async function queryLocalClosestMatches(input: {
   return { rows, totalCount };
 }
 
+async function mapCardSearchRows(
+  rows: { card: typeof cards.$inferSelect; set: typeof cardSets.$inferSelect }[],
+) {
+  const currentMarketPrices = await getCurrentMarketPricesByCardId(rows.map((row) => row.card.id));
+
+  return rows.map((row) =>
+    mapCardSearchResult({
+      ...row,
+      currentMarketPriceUsd: currentMarketPrices.get(row.card.id) ?? null,
+    }),
+  );
+}
+
+async function getCurrentMarketPricesByCardId(cardIds: string[]) {
+  const uniqueCardIds = Array.from(new Set(cardIds));
+  const pricesByCardId = new Map<string, number>();
+
+  if (uniqueCardIds.length === 0) return pricesByCardId;
+
+  const priceRows = await db
+    .select({
+      cardId: cardVariants.cardId,
+      amountMinor: currentPrices.amountMinor,
+    })
+    .from(currentPrices)
+    .innerJoin(cardVariants, eq(currentPrices.cardVariantId, cardVariants.id))
+    .where(
+      and(
+        eq(currentPrices.source, "tcgcsv"),
+        eq(currentPrices.priceType, "market"),
+        eq(currentPrices.currency, "USD"),
+        inArray(cardVariants.cardId, uniqueCardIds),
+      ),
+    );
+
+  for (const row of priceRows) {
+    const amountUsd = row.amountMinor / 100;
+    const existingAmount = pricesByCardId.get(row.cardId);
+
+    if (existingAmount === undefined || amountUsd < existingAmount) {
+      pricesByCardId.set(row.cardId, amountUsd);
+    }
+  }
+
+  return pricesByCardId;
+}
+
+async function getCurrentPricesForCardId(cardId: string) {
+  const pricesByPrinting = new Map<
+    string,
+    { price: PokemonTcgPrice; observedAt: Date }
+  >();
+  const priceRows = await db
+    .select({
+      printing: cardVariants.printing,
+      priceType: currentPrices.priceType,
+      amountMinor: currentPrices.amountMinor,
+      observedAt: currentPrices.observedAt,
+    })
+    .from(currentPrices)
+    .innerJoin(cardVariants, eq(currentPrices.cardVariantId, cardVariants.id))
+    .where(
+      and(
+        eq(cardVariants.cardId, cardId),
+        eq(cardVariants.condition, "unspecified"),
+        eq(cardVariants.languageCode, "en"),
+        eq(currentPrices.source, "tcgcsv"),
+        eq(currentPrices.currency, "USD"),
+      ),
+    );
+
+  for (const row of priceRows) {
+    const current = pricesByPrinting.get(row.printing) ?? {
+      price: {},
+      observedAt: row.observedAt,
+    };
+    const amountUsd = row.amountMinor / 100;
+
+    if (row.priceType === "low") current.price.low = amountUsd;
+    if (row.priceType === "mid") current.price.mid = amountUsd;
+    if (row.priceType === "high") current.price.high = amountUsd;
+    if (row.priceType === "market") current.price.market = amountUsd;
+    if (row.priceType === "direct_low") current.price.directLow = amountUsd;
+    if (row.observedAt > current.observedAt) current.observedAt = row.observedAt;
+
+    pricesByPrinting.set(row.printing, current);
+  }
+
+  return pricesByPrinting;
+}
+
+function toTcgplayerPriceKey(printing: string) {
+  return printing.replace(/_([a-z])/g, (_, letter: string) => letter.toUpperCase());
+}
+
 export const getCatalogPokemonSets = cache(async () => {
   try {
     const localSets = await db
@@ -280,7 +405,7 @@ export const getCatalogPokemonCardsBySetPage = cache(async (input: {
         .offset(offset);
 
       return {
-        cards: rows.map(mapCardSearchResult),
+        cards: await mapCardSearchRows(rows),
         totalCount,
         page,
         pageSize,
@@ -316,7 +441,7 @@ export const getCatalogPokemonCard = cache(async (id: string) => {
       .limit(1);
 
     if (localCard) {
-      const card = mapCard(localCard);
+      const card = await mapCardWithCurrentPrices(localCard);
       if (card) return card;
     }
   } catch (error) {
@@ -373,7 +498,7 @@ export async function searchCatalogPokemonCards(input: {
 
     if (input.mode === "suggest" && localResult.totalCount > 0) {
       return {
-        cards: localResult.rows.map(mapCardSearchResult),
+        cards: await mapCardSearchRows(localResult.rows),
         totalCount: localResult.totalCount,
         matchType: "suggestions",
         parsedQuery,
@@ -385,7 +510,7 @@ export async function searchCatalogPokemonCards(input: {
 
     if (localResult.totalCount > 0) {
       return {
-        cards: localResult.rows.map(mapCardSearchResult),
+        cards: await mapCardSearchRows(localResult.rows),
         totalCount: localResult.totalCount,
         matchType: "matches",
         parsedQuery,
@@ -405,7 +530,7 @@ export async function searchCatalogPokemonCards(input: {
 
       if (closestResult.totalCount > 0) {
         return {
-          cards: closestResult.rows.map(mapCardSearchResult),
+          cards: await mapCardSearchRows(closestResult.rows),
           totalCount: closestResult.totalCount,
           matchType: "closest",
           parsedQuery,

@@ -13,7 +13,7 @@ Cardkeeper is a Pokemon card collection manager built with Next.js, TypeScript, 
 - Dedicated search-results pages for ambiguous and closest matches
 - Broad submitted-search results with infinite scroll and shareable URLs
 - Clickable card results and full card-detail pages
-- Card images and current starting TCGplayer market prices
+- Card images and imported starting TCGplayer market prices
 - Collection, variant, and historical pricing database schema
 - Supabase SSR browser/server clients and session-refresh proxy
 - Verified, non-cached authentication status endpoint
@@ -76,6 +76,25 @@ Import or refresh the local English Pokemon TCG catalog:
 
 ```bash
 npm run catalog:import
+```
+
+Refresh TCGCSV-backed TCGplayer prices into `current_prices` and `price_points`:
+
+```bash
+npm run prices:refresh
+```
+
+Useful price refresh test runs:
+
+```bash
+npm run prices:refresh -- --dry-run --max-groups=1
+npm run prices:refresh -- --dry-run --group-id=24541
+```
+
+Replace existing TCGCSV prices before writing a fresh snapshot:
+
+```bash
+npm run prices:refresh -- --reset-source
 ```
 
 Useful test runs:

@@ -12,6 +12,7 @@
     "db:migrate": "node scripts/migrate.mjs",
     "catalog:import": "node scripts/import-catalog.mjs",
     "catalog:test-search": "node scripts/test-catalog-search.mjs",
+    "prices:refresh": "node scripts/refresh-prices-tcgcsv.mjs",
     "db:test-rls": "node scripts/test-rls.mjs",
     "db:push": "drizzle-kit push",
     "db:studio": "drizzle-kit studio"
