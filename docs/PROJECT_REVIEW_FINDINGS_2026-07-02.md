@@ -71,6 +71,7 @@ Implemented:
 - Collection filtering by card text and set is implemented in the client collection browser.
 - Set filtering uses the full local catalog set list, not only sets already represented in the user's collection.
 - Collection grid items now load through server-side pages, with the first page rendered by `/collection` and additional pages fetched from `/api/collection`.
+- Added `src/app/collection/loading.tsx` so navigation to the collection page shows an immediate skeleton while private collection data loads.
 
 Still pending:
 
@@ -156,6 +157,7 @@ Recommended improvements:
 Status:
 
 - Implemented stale-copy cleanup on July 3, 2026. Updated homepage milestone/intro copy, empty collection guidance, and README feature/setup/check descriptions to match local catalog search, connected collection persistence, infinite scroll, set browsing, and the catalog search regression script.
+- Implemented collection navigation loading feedback on July 3, 2026 with a static route-level skeleton for `/collection`.
 
 ## Testing And Observability
 
