@@ -11,6 +11,7 @@
     "db:generate": "drizzle-kit generate",
     "db:migrate": "node scripts/migrate.mjs",
     "catalog:import": "node scripts/import-catalog.mjs",
+    "catalog:test-search": "node scripts/test-catalog-search.mjs",
     "db:test-rls": "node scripts/test-rls.mjs",
     "db:push": "drizzle-kit push",
     "db:studio": "drizzle-kit studio"

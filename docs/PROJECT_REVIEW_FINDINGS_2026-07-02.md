@@ -24,7 +24,7 @@ Cardkeeper has a strong foundation for the stage it is in. The project is alread
 
 ### 1. Fix local multi-word search and DB pagination
 
-Status: Partially implemented on July 3, 2026.
+Status: Implemented on July 3, 2026.
 
 Implemented:
 
@@ -32,11 +32,16 @@ Implemented:
 - Local search now tries full normalized phrase-prefix matching first, then falls back to first-token prefix plus later-token containment.
 - Infinite-scroll API requests now use DB-native `count`, `limit`, and `offset` for matched local results instead of slicing a capped 250-row in-memory list.
 - Added migration `drizzle/0002_search_indexes.sql` with normalized-name prefix/trigram indexes, lower-number index, and `(set_id, number)` index.
+- Applied the migration to the configured database with `npm run db:migrate`.
+- Added rollback-only catalog search coverage in `scripts/test-catalog-search.mjs` for multi-word names, name plus number, punctuation variants, token fallback, and broad queries over 250 results.
 
-Still pending:
+Verification:
 
-- Add automated tests for multi-word names, name plus number, punctuation variants, and broad queries over 250 results.
-- Apply the new migration to the configured database with `npm run db:migrate`.
+```bash
+npm run catalog:test-search
+```
+
+Passed 7/7 checks, including fixture rollback.
 
 The local catalog search currently tokenizes the name and applies each token as `lower(cards.name) like token%` against the full name in `src/lib/catalog/data.ts:249` and `src/lib/catalog/data.ts:267-268`. That works for a single leading token, but multi-word names can miss exact local matches because the same full string cannot start with every token at once. Queries like `Mr Mime`, `Pikachu ex`, or a multi-word name plus number can fall through to closest-match behavior.
 
@@ -141,10 +146,9 @@ Recommended additions:
 
 ## Suggested Next Pass
 
-1. Finish local search follow-up: apply the search-index migration and add tests for multi-word, punctuation, name-plus-number, and broad over-250-result queries.
-2. Update stale README/homepage/empty-state copy so the product matches the current build.
-3. Consolidate `getCurrentCollection()` into one joined/nested read and add collection filters.
-4. Add an `updated_at` trigger migration.
-5. Add Playwright smoke coverage for the core user journey.
-6. Design the price refresh job and then wire `current_prices`/`price_points`.
-7. Revisit eBay listing cards after developer approval and keep outbound search links as fallback.
+1. Update stale README/homepage/empty-state copy so the product matches the current build.
+2. Consolidate `getCurrentCollection()` into one joined/nested read and add collection filters.
+3. Add an `updated_at` trigger migration.
+4. Add Playwright smoke coverage for the core user journey.
+5. Design the price refresh job and then wire `current_prices`/`price_points`.
+6. Revisit eBay listing cards after developer approval and keep outbound search links as fallback.
