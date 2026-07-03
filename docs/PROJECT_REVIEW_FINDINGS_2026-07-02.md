@@ -179,3 +179,18 @@ Recommended additions:
 4. Add Playwright smoke coverage for the core user journey.
 5. Design the price refresh job and then wire `current_prices`/`price_points`.
 6. Revisit eBay listing cards after developer approval and keep outbound search links as fallback.
+
+## Next Session Starting Point
+
+Start with the trigram closest-match search follow-up:
+
+- Replace the relaxed-prefix plus JavaScript Levenshtein closest-match path in `src/lib/catalog/data.ts` with a Postgres trigram similarity query using the normalized-name expression already indexed by `drizzle/0002_search_indexes.sql`.
+- Extend `scripts/test-catalog-search.mjs` with misspelling cases such as `Pikchu`, punctuation variants, and multi-word fuzzy queries.
+- Verify with:
+
+```bash
+npm run catalog:test-search
+npm run typecheck
+npm run lint
+npm run build
+```
