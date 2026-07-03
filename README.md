@@ -84,6 +84,14 @@ Refresh TCGCSV-backed TCGplayer prices into `current_prices` and `price_points`:
 npm run prices:refresh
 ```
 
+The scheduled GitHub Action runs nightly with:
+
+```bash
+npm run prices:refresh -- --skip-if-current
+```
+
+It checks TCGCSV's `last-updated.txt` first and exits without a full sync when the latest local TCGCSV prices already match the newest build. Configure `DATABASE_URL` as a GitHub Actions secret before relying on the workflow.
+
 Useful price refresh test runs:
 
 ```bash

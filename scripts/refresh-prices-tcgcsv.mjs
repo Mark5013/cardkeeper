@@ -10,6 +10,7 @@ const CURRENCY = "USD";
 const DEFAULT_PAGE_DELAY_MS = 100;
 const DEFAULT_MAX_RETRIES = 4;
 const WRITE_BATCH_SIZE = 500;
+const USER_AGENT = process.env.TCGCSV_USER_AGENT ?? "Cardkeeper/0.1.0 (+https://github.com/Mark5013/cardkeeper)";
 const SUPPLEMENTAL_GROUP_TERMS = [
   "academy",
   "blister",
@@ -44,6 +45,7 @@ const sql = postgres(process.env.DATABASE_URL, {
   max: 1,
   connect_timeout: 10,
 });
+let lastTcgcsvRequestAt = 0;
 
 try {
   await refreshPrices();
@@ -59,6 +61,7 @@ function parseArgs(args) {
     pageDelayMs: DEFAULT_PAGE_DELAY_MS,
     maxRetries: DEFAULT_MAX_RETRIES,
     resetSource: false,
+    skipIfCurrent: false,
   };
 
   for (const arg of args) {
@@ -74,6 +77,8 @@ function parseArgs(args) {
       parsed.maxRetries = parsePositiveInteger(arg.slice("--max-retries=".length), "max retries");
     } else if (arg === "--reset-source") {
       parsed.resetSource = true;
+    } else if (arg === "--skip-if-current") {
+      parsed.skipIfCurrent = true;
     } else {
       throw new Error(`Unknown argument: ${arg}`);
     }
@@ -95,6 +100,18 @@ function parsePositiveInteger(value, label) {
 async function refreshPrices() {
   const startedAt = Date.now();
   const observedAt = await getObservedAt();
+
+  if (options.skipIfCurrent && !options.resetSource) {
+    const latestObservedAt = await getLatestCurrentPriceObservedAt();
+
+    if (latestObservedAt && latestObservedAt >= observedAt) {
+      console.log(
+        `Skipping TCGCSV price refresh. Latest local ${SOURCE} prices are from ${latestObservedAt.toISOString()}, and TCGCSV latest build is ${observedAt.toISOString()}.`,
+      );
+      return;
+    }
+  }
+
   const groups = await getGroupsToRefresh();
   const localSets = await getLocalSets();
   const setMatchers = buildLocalSetMatchers(localSets);
@@ -131,10 +148,8 @@ async function refreshPrices() {
 
     stats.groupsMatched += 1;
 
-    const [productsPayload, pricesPayload] = await Promise.all([
-      fetchTcgcsvJson(`/tcgplayer/${POKEMON_CATEGORY_ID}/${group.groupId}/products`),
-      fetchTcgcsvJson(`/tcgplayer/${POKEMON_CATEGORY_ID}/${group.groupId}/prices`),
-    ]);
+    const productsPayload = await fetchTcgcsvJson(`/tcgplayer/${POKEMON_CATEGORY_ID}/${group.groupId}/products`);
+    const pricesPayload = await fetchTcgcsvJson(`/tcgplayer/${POKEMON_CATEGORY_ID}/${group.groupId}/prices`);
     const cardProducts = productsPayload.results.filter(isCardProduct);
     const pricesByProductId = groupPricesByProductId(pricesPayload.results);
     const localCards = await getLocalCardsForSet(localSet.id);
@@ -228,6 +243,16 @@ async function resetSourceRows() {
   console.log(
     `Removed ${deletedCurrentPrices.length.toLocaleString()} current price rows and ${deletedPricePoints.length.toLocaleString()} price point rows for source ${SOURCE}.`,
   );
+}
+
+async function getLatestCurrentPriceObservedAt() {
+  const [row] = await sql`
+    select max(observed_at) as observed_at
+    from current_prices
+    where source = ${SOURCE}
+  `;
+
+  return row?.observed_at ? new Date(row.observed_at) : null;
 }
 
 async function getObservedAt() {
@@ -525,10 +550,11 @@ async function fetchTcgcsvText(path) {
 
   for (let attempt = 1; attempt <= options.maxRetries + 1; attempt += 1) {
     try {
+      await throttleTcgcsvRequest();
       const response = await fetch(url, {
         headers: {
           Accept: "application/json,text/plain",
-          "User-Agent": "Cardkeeper/0.1.0",
+          "User-Agent": USER_AGENT,
         },
       });
 
@@ -547,6 +573,18 @@ async function fetchTcgcsvText(path) {
   }
 
   throw lastError ?? new Error(`TCGCSV request failed for ${path}.`);
+}
+
+async function throttleTcgcsvRequest() {
+  if (options.pageDelayMs <= 0) return;
+
+  const elapsedMs = Date.now() - lastTcgcsvRequestAt;
+
+  if (elapsedMs < options.pageDelayMs) {
+    await sleep(options.pageDelayMs - elapsedMs);
+  }
+
+  lastTcgcsvRequestAt = Date.now();
 }
 
 function chunk(items, size) {
