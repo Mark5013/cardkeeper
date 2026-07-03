@@ -140,9 +140,9 @@ Recommended improvements:
 
 Recommended improvements:
 
-- Add a generic `updated_at` trigger. The schema defines `updated_at` defaults (`src/db/schema.ts:19`), and many app writes update it manually, but database-level automation would reduce future drift.
+- Implemented: add a generic `updated_at` trigger. Migration `drizzle/0003_updated_at_triggers.sql` adds a reusable trigger function and attaches it to `profiles`, `card_sets`, `cards`, `card_variants`, `collection_items`, and `current_prices`.
 - Add check constraints or enums for `card_variants.condition` and possibly `printing`. API routes validate these today, but the database accepts arbitrary values.
-- Add search-focused indexes: lower/normalized name, normalized number, `(set_id, number)`, and eventually trigram indexes.
+- Implemented: add search-focused indexes for normalized card names, trigram search, lower card number, and `(set_id, number)`.
 - Consider a generated numeric card number sort key. Several queries sort by regex/substr numeric extraction at query time (`src/lib/catalog/data.ts:185-187`), which is useful but not index-friendly.
 - Review `bigint(..., { mode: "number" })` for price amounts if future providers can create values outside JS safe integer range. For card prices it is likely fine, but it is a conscious tradeoff.
 
@@ -176,22 +176,20 @@ Recommended additions:
 ## Suggested Next Pass
 
 1. Add server-side collection filter/sort parameters once larger binders need filtering beyond loaded pages.
-2. Add an `updated_at` trigger migration.
-3. Add Playwright smoke coverage for the core user journey.
-4. Design the price refresh job and then wire `current_prices`/`price_points`.
-5. Revisit eBay listing cards after developer approval and keep outbound search links as fallback.
+2. Add Playwright smoke coverage for the core user journey.
+3. Design the price refresh job and then wire `current_prices`/`price_points`.
+4. Revisit eBay listing cards after developer approval and keep outbound search links as fallback.
 
 ## Next Session Starting Point
 
-Start with the next database hygiene improvement:
+Start with collection scalability:
 
-- Add a generic `updated_at` trigger migration for tables that rely on manually maintained `updated_at` values.
-- Keep app-level explicit `updated_at` writes where they are already harmless, but let the database protect future writes from drift.
-- Verify the migration against the configured database and rerun the standard checks.
+- Add server-side collection filter/sort parameters for the paged collection API.
+- Keep the current client controls working, but move the expensive filtering/sorting closer to the database as collections grow.
+- Preserve the current collection DTO/UI behavior while making the data boundary more scalable.
 - Verify with:
 
 ```bash
-npm run db:migrate
 npm run typecheck
 npm run lint
 npm run build
