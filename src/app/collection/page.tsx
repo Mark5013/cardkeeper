@@ -10,10 +10,15 @@ import { getCurrentCollection } from "@/lib/collection/data";
 export const metadata: Metadata = { title: "My collection" };
 
 const usd = new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" });
+const COLLECTION_PAGE_SIZE = 24;
 
 export default async function CollectionPage() {
   const collection = await getCurrentCollection();
   if (!collection) redirect("/login?next=/collection");
+  const collectionPage =
+    collection.items.length > 0
+      ? await getCurrentCollection({ page: 1, pageSize: COLLECTION_PAGE_SIZE })
+      : collection;
   const setOptions =
     collection.items.length > 0
       ? (await getCatalogPokemonSets()).map((set) => ({ id: set.id, name: set.name }))
@@ -66,7 +71,14 @@ export default async function CollectionPage() {
             </Link>
           </div>
         ) : (
-          <CollectionBrowser items={collection.items} setOptions={setOptions} />
+          <CollectionBrowser
+            initialItems={collectionPage?.items ?? []}
+            setOptions={setOptions}
+            initialPage={collectionPage?.page ?? 1}
+            pageSize={collectionPage?.pageSize ?? COLLECTION_PAGE_SIZE}
+            totalItems={collectionPage?.totalItems ?? collection.uniqueVariants}
+            initialHasNextPage={collectionPage?.hasNextPage ?? false}
+          />
         )}
       </section>
     </main>

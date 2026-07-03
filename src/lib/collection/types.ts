@@ -23,6 +23,11 @@ export type CollectionSummaryDto = {
   totalCopies: number;
   estimatedValueUsd: number;
   unpricedVariants: number;
+  page: number;
+  pageSize: number;
+  totalItems: number;
+  totalPages: number;
+  hasNextPage: boolean;
 };
 
 export type OwnedCardVariantDto = {

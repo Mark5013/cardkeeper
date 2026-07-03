@@ -1,10 +1,23 @@
 import { NextResponse } from "next/server";
+import { z } from "zod";
 
 import { getCurrentCollection } from "@/lib/collection/data";
 
-export async function GET() {
+const collectionPageSchema = z.object({
+  page: z.coerce.number().int().min(1).max(1000).default(1),
+  pageSize: z.coerce.number().int().min(1).max(60).default(24),
+});
+
+export async function GET(request: Request) {
+  const url = new URL(request.url);
+  const parsed = collectionPageSchema.safeParse(Object.fromEntries(url.searchParams));
+
+  if (!parsed.success) {
+    return NextResponse.json({ error: "Invalid collection page." }, { status: 400 });
+  }
+
   try {
-    const collection = await getCurrentCollection();
+    const collection = await getCurrentCollection(parsed.data);
 
     if (!collection) {
       return NextResponse.json({ error: "Authentication required." }, { status: 401 });

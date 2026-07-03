@@ -428,6 +428,15 @@ select {
   text-decoration: underline;
 }
 
+.collection-pagination {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 1rem;
+  margin-top: 2rem;
+}
+
 .sort-menu-wrap {
   position: relative;
 }

@@ -70,11 +70,12 @@ Implemented:
 - The collection DTO and UI behavior are unchanged.
 - Collection filtering by card text and set is implemented in the client collection browser.
 - Set filtering uses the full local catalog set list, not only sets already represented in the user's collection.
+- Collection grid items now load through server-side pages, with the first page rendered by `/collection` and additional pages fetched from `/api/collection`.
 
 Still pending:
 
 - Defer finish, condition, and unpriced-status filters until collection grouping or server-side filtering makes them more useful.
-- Add server-side pagination before very large collections become common.
+- Revisit server-side filter/sort parameters when collections are large enough that client filtering over loaded pages is not sufficient.
 - Move collection valuation to `current_prices` after the price refresh design is implemented.
 
 `getCurrentCollection()` fetches collection rows, variants, cards, and sets through multiple dependent Supabase queries (`src/lib/collection/data.ts:71-120`). That is fine for small data, but it will become a noticeable latency source as collections grow. The July 2 work already improved set progress with one nested select (`src/lib/collection/data.ts:22-55`); the main collection view would benefit from the same treatment.
@@ -171,7 +172,7 @@ Recommended additions:
 ## Suggested Next Pass
 
 1. Upgrade local closest-match search to use Postgres trigram similarity and add fuzzy-search regression checks.
-2. Add collection filters and server-side pagination for larger binders.
+2. Add server-side collection filter/sort parameters once larger binders need filtering beyond loaded pages.
 3. Add an `updated_at` trigger migration.
 4. Add Playwright smoke coverage for the core user journey.
 5. Design the price refresh job and then wire `current_prices`/`price_points`.

@@ -3,6 +3,7 @@
 import { useMemo, useState } from "react";
 
 import { CollectionCardGrid } from "@/components/collection/collection-card-grid";
+import type { CollectionSummaryDto } from "@/lib/collection/types";
 import type { CollectionItemDto } from "@/lib/collection/types";
 
 type CollectionSortOption = "created-desc" | "created-asc" | "price-desc" | "price-asc";
@@ -69,17 +70,30 @@ function filterCollectionItems(input: {
 }
 
 export function CollectionBrowser({
-  items,
+  initialItems,
   setOptions,
+  initialPage,
+  pageSize,
+  totalItems,
+  initialHasNextPage,
 }: {
-  items: CollectionItemDto[];
+  initialItems: CollectionItemDto[];
   setOptions: CollectionSetOption[];
+  initialPage: number;
+  pageSize: number;
+  totalItems: number;
+  initialHasNextPage: boolean;
 }) {
+  const [items, setItems] = useState(initialItems);
   const [sort, setSort] = useState<CollectionSortOption>("created-desc");
   const [query, setQuery] = useState("");
   const [selectedSetIds, setSelectedSetIds] = useState<string[]>([]);
   const [isSortMenuOpen, setIsSortMenuOpen] = useState(false);
   const [isSetMenuOpen, setIsSetMenuOpen] = useState(false);
+  const [loadedPage, setLoadedPage] = useState(initialPage);
+  const [hasNextPage, setHasNextPage] = useState(initialHasNextPage);
+  const [isLoadingMore, setIsLoadingMore] = useState(false);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const selectedOption = SORT_OPTIONS.find((option) => option.value === sort) ?? SORT_OPTIONS[0];
   const filteredItems = useMemo(
     () => filterCollectionItems({ items, query, selectedSetIds }),
@@ -98,6 +112,40 @@ export function CollectionBrowser({
     setQuery("");
     setSelectedSetIds([]);
     setIsSetMenuOpen(false);
+  }
+
+  async function loadMore() {
+    if (isLoadingMore || !hasNextPage) return;
+
+    setIsLoadingMore(true);
+    setLoadError(null);
+
+    try {
+      const nextPage = loadedPage + 1;
+      const params = new URLSearchParams({
+        page: String(nextPage),
+        pageSize: String(pageSize),
+      });
+      const response = await fetch(`/api/collection?${params}`, {
+        headers: { Accept: "application/json" },
+      });
+
+      if (!response.ok) {
+        throw new Error("Unable to load more cards.");
+      }
+
+      const payload = (await response.json()) as CollectionSummaryDto;
+      setItems((current) => {
+        const seen = new Set(current.map((item) => item.id));
+        return [...current, ...payload.items.filter((item) => !seen.has(item.id))];
+      });
+      setLoadedPage(payload.page);
+      setHasNextPage(payload.hasNextPage);
+    } catch (error) {
+      setLoadError(error instanceof Error ? error.message : "Unable to load more cards.");
+    } finally {
+      setIsLoadingMore(false);
+    }
   }
 
   return (
@@ -218,7 +266,7 @@ export function CollectionBrowser({
 
           <div className="collection-filter-actions">
             <p className="text-sm font-semibold text-[var(--muted)]">
-              Showing {sortedItems.length} of {items.length}
+              Showing {sortedItems.length} of {items.length} loaded
             </p>
             {hasActiveFilters ? (
               <button type="button" className="collection-clear-button" onClick={clearFilters}>
@@ -230,7 +278,25 @@ export function CollectionBrowser({
       </div>
 
       {sortedItems.length > 0 ? (
-        <CollectionCardGrid items={sortedItems} />
+        <>
+          <CollectionCardGrid items={sortedItems} />
+          <div className="collection-pagination">
+            <p className="text-sm font-semibold text-[var(--muted)]">
+              Loaded {items.length} of {totalItems}
+            </p>
+            {loadError ? <p className="text-sm font-semibold text-[var(--danger)]">{loadError}</p> : null}
+            {hasNextPage ? (
+              <button
+                type="button"
+                className="auth-submit"
+                disabled={isLoadingMore}
+                onClick={loadMore}
+              >
+                {isLoadingMore ? "Loading..." : "Load more"}
+              </button>
+            ) : null}
+          </div>
+        </>
       ) : (
         <div className="rounded-lg border border-dashed border-[var(--line)] bg-[var(--surface)] px-6 py-12 text-center">
           <h3 className="text-xl font-bold">No cards match these filters</h3>

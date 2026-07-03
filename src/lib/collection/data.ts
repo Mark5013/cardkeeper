@@ -43,6 +43,44 @@ type CollectionRow = {
   } | null;
 };
 
+type CollectionPageInput = {
+  page?: number;
+  pageSize?: number;
+};
+
+const DEFAULT_COLLECTION_PAGE_SIZE = 24;
+
+function normalizeCollectionPage(input?: CollectionPageInput) {
+  const inputPage = input?.page;
+  const inputPageSize = input?.pageSize;
+  const page = Number.isInteger(inputPage) && inputPage && inputPage > 0 ? inputPage : 1;
+  const pageSize =
+    Number.isInteger(inputPageSize) && inputPageSize && inputPageSize > 0
+      ? Math.min(inputPageSize, 60)
+      : null;
+
+  return { page, pageSize };
+}
+
+function emptyCollectionSummary(input?: { page?: number; pageSize?: number | null }) {
+  const page = input?.page ?? 1;
+  const pageSize = input?.pageSize ?? DEFAULT_COLLECTION_PAGE_SIZE;
+
+  return {
+    items: [],
+    uniqueCards: 0,
+    uniqueVariants: 0,
+    totalCopies: 0,
+    estimatedValueUsd: 0,
+    unpricedVariants: 0,
+    page,
+    pageSize,
+    totalItems: 0,
+    totalPages: 0,
+    hasNextPage: false,
+  };
+}
+
 export async function getCurrentSetCollectionProgress(): Promise<Map<string, number> | null> {
   const user = await getCurrentUser();
   if (!user) return null;
@@ -93,12 +131,17 @@ export async function getCurrentSetCollectionProgress(): Promise<Map<string, num
   );
 }
 
-export async function getCurrentCollection(): Promise<CollectionSummaryDto | null> {
+export async function getCurrentCollection(
+  input?: CollectionPageInput,
+): Promise<CollectionSummaryDto | null> {
   const user = await getCurrentUser();
   if (!user) return null;
 
   const supabase = await createClient();
-  const { data, error } = await supabase
+  const { page, pageSize } = normalizeCollectionPage(input);
+  const from = pageSize === null ? null : (page - 1) * pageSize;
+  const to = pageSize === null || from === null ? null : from + pageSize - 1;
+  let query = supabase
     .from("collection_items")
     .select(
       `
@@ -124,10 +167,16 @@ export async function getCurrentCollection(): Promise<CollectionSummaryDto | nul
           )
         )
       `,
+      { count: "exact" },
     )
     .eq("user_id", user.id)
-    .order("created_at", { ascending: false })
-    .returns<CollectionRow[]>();
+    .order("created_at", { ascending: false });
+
+  if (from !== null && to !== null) {
+    query = query.range(from, to);
+  }
+
+  const { data, error, count } = await query.returns<CollectionRow[]>();
 
   if (error) {
     console.error("Failed to load collection", { code: error.code });
@@ -135,14 +184,7 @@ export async function getCurrentCollection(): Promise<CollectionSummaryDto | nul
   }
 
   if (data.length === 0) {
-    return {
-      items: [],
-      uniqueCards: 0,
-      uniqueVariants: 0,
-      totalCopies: 0,
-      estimatedValueUsd: 0,
-      unpricedVariants: 0,
-    };
+    return emptyCollectionSummary({ page, pageSize });
   }
 
   const items = data.flatMap((item) => {
@@ -180,6 +222,9 @@ export async function getCurrentCollection(): Promise<CollectionSummaryDto | nul
     ];
   });
 
+  const totalItems = count ?? items.length;
+  const effectivePageSize = pageSize ?? Math.max(totalItems, DEFAULT_COLLECTION_PAGE_SIZE);
+
   return {
     items,
     uniqueCards: new Set(items.map((item) => item.providerCardId)).size,
@@ -190,6 +235,11 @@ export async function getCurrentCollection(): Promise<CollectionSummaryDto | nul
       0,
     ),
     unpricedVariants: items.filter((item) => item.unitPriceUsd === null).length,
+    page,
+    pageSize: effectivePageSize,
+    totalItems,
+    totalPages: Math.ceil(totalItems / effectivePageSize),
+    hasNextPage: page * effectivePageSize < totalItems,
   };
 }
 
