@@ -1,5 +1,9 @@
 import "server-only";
 
+import { and, asc, desc, eq, ilike, inArray, or, sql } from "drizzle-orm";
+
+import { db } from "@/db";
+import { cards, cardSets, cardVariants, collectionItems } from "@/db/schema";
 import { getCurrentUser } from "@/lib/supabase/auth";
 import { createClient } from "@/lib/supabase/server";
 import { getCardPrintingOptions } from "@/lib/pokemon-tcg/printing";
@@ -19,36 +23,26 @@ type SetProgressRow = {
   } | null;
 };
 
-type CollectionRow = {
-  id: string;
-  card_variant_id: string;
-  quantity: number;
-  created_at: string;
-  updated_at: string;
-  card_variants: {
-    id: string;
-    printing: string;
-    condition: string;
-    cards: {
-      provider_id: string;
-      name: string;
-      number: string;
-      image_small_url: string | null;
-      provider_data: Record<string, unknown> | null;
-      card_sets: {
-        provider_id: string;
-        name: string;
-      } | null;
-    } | null;
-  } | null;
-};
-
 type CollectionPageInput = {
   page?: number;
   pageSize?: number;
+  query?: string;
+  setIds?: string[];
+  sort?: CollectionSortOption;
 };
 
 const DEFAULT_COLLECTION_PAGE_SIZE = 24;
+const COLLECTION_SORT_OPTIONS = ["created-desc", "created-asc", "price-desc", "price-asc"] as const;
+
+export type CollectionSortOption = (typeof COLLECTION_SORT_OPTIONS)[number];
+
+function isCollectionSortOption(value: string | undefined): value is CollectionSortOption {
+  return COLLECTION_SORT_OPTIONS.some((option) => option === value);
+}
+
+export function normalizeCollectionSort(value: string | undefined): CollectionSortOption {
+  return isCollectionSortOption(value) ? value : "created-desc";
+}
 
 function normalizeCollectionPage(input?: CollectionPageInput) {
   const inputPage = input?.page;
@@ -60,6 +54,14 @@ function normalizeCollectionPage(input?: CollectionPageInput) {
       : null;
 
   return { page, pageSize };
+}
+
+function normalizeCollectionFilterText(value: string | undefined) {
+  return value?.trim().slice(0, 100) ?? "";
+}
+
+function escapeLikePattern(value: string) {
+  return value.replace(/[\\%_]/g, (character) => `\\${character}`);
 }
 
 function emptyCollectionSummary(input?: { page?: number; pageSize?: number | null }) {
@@ -137,63 +139,62 @@ export async function getCurrentCollection(
   const user = await getCurrentUser();
   if (!user) return null;
 
-  const supabase = await createClient();
   const { page, pageSize } = normalizeCollectionPage(input);
-  const from = pageSize === null ? null : (page - 1) * pageSize;
-  const to = pageSize === null || from === null ? null : from + pageSize - 1;
-  let query = supabase
-    .from("collection_items")
-    .select(
-      `
-        id,
-        card_variant_id,
-        quantity,
-        created_at,
-        updated_at,
-        card_variants (
-          id,
-          printing,
-          condition,
-          cards (
-            provider_id,
-            name,
-            number,
-            image_small_url,
-            provider_data,
-            card_sets (
-              provider_id,
-              name
-            )
-          )
-        )
-      `,
-      { count: "exact" },
-    )
-    .eq("user_id", user.id)
-    .order("created_at", { ascending: false });
+  const filterText = normalizeCollectionFilterText(input?.query);
+  const setIds = input?.setIds?.filter(Boolean) ?? [];
+  const sort = input?.sort ?? "created-desc";
+  const conditions = [eq(collectionItems.userId, user.id)];
 
-  if (from !== null && to !== null) {
-    query = query.range(from, to);
+  if (filterText.length > 0) {
+    const likePattern = `%${escapeLikePattern(filterText)}%`;
+    conditions.push(
+      or(
+        ilike(cards.name, likePattern),
+        ilike(cards.number, likePattern),
+        ilike(cardSets.name, likePattern),
+      )!,
+    );
   }
 
-  const { data, error, count } = await query.returns<CollectionRow[]>();
+  if (setIds.length > 0) {
+    conditions.push(inArray(cardSets.providerId, setIds));
+  }
 
-  if (error) {
-    console.error("Failed to load collection", { code: error.code });
+  const whereCollection = and(...conditions);
+
+  let rows;
+
+  try {
+    rows = await db
+      .select({
+        item: collectionItems,
+        variant: cardVariants,
+        card: cards,
+        set: cardSets,
+      })
+      .from(collectionItems)
+      .innerJoin(cardVariants, eq(collectionItems.cardVariantId, cardVariants.id))
+      .innerJoin(cards, eq(cardVariants.cardId, cards.id))
+      .innerJoin(cardSets, eq(cards.setId, cardSets.id))
+      .where(whereCollection)
+      .orderBy(
+        sort === "created-asc" ? asc(collectionItems.createdAt) : desc(collectionItems.createdAt),
+        asc(cards.name),
+        sql`case when ${cards.number} ~ '^[0-9]+' then substring(${cards.number} from '^[0-9]+')::integer else null end asc nulls last`,
+        asc(cards.number),
+        asc(collectionItems.id),
+      );
+  } catch (error) {
+    console.error("Failed to load collection", error);
     throw new Error("Unable to load the collection.");
   }
 
-  if (data.length === 0) {
+  if (rows.length === 0) {
     return emptyCollectionSummary({ page, pageSize });
   }
 
-  const items = data.flatMap((item) => {
-    const variant = item.card_variants;
-    const card = variant?.cards;
-    const set = card?.card_sets;
-    if (!variant || !card || !set) return [];
-
-    const providerCard = card.provider_data as unknown as PokemonTcgCard | null;
+  const allItems = rows.map(({ item, variant, card, set }) => {
+    const providerCard = card.providerData as unknown as PokemonTcgCard | null;
     const price = providerCard
       ? getCardPrintingOptions(providerCard).find((option) => option.value === variant.printing)?.price
       : null;
@@ -201,40 +202,56 @@ export async function getCurrentCollection(
     const estimatedValueUsd =
       unitPriceUsd === null ? null : (Math.round(unitPriceUsd * 100) * item.quantity) / 100;
 
-    return [
-      {
-        id: item.id,
-        cardVariantId: item.card_variant_id,
-        providerCardId: card.provider_id,
-        cardName: card.name,
-        cardNumber: card.number,
-        providerSetId: set.provider_id,
-        setName: set.name,
-        imageSmallUrl: card.image_small_url,
-        printing: variant.printing,
-        condition: variant.condition,
-        quantity: item.quantity,
-        unitPriceUsd,
-        estimatedValueUsd,
-        createdAt: item.created_at,
-        updatedAt: item.updated_at,
-      },
-    ];
+    return {
+      id: item.id,
+      cardVariantId: item.cardVariantId,
+      providerCardId: card.providerId,
+      cardName: card.name,
+      cardNumber: card.number,
+      providerSetId: set.providerId,
+      setName: set.name,
+      imageSmallUrl: card.imageSmallUrl,
+      printing: variant.printing,
+      condition: variant.condition,
+      quantity: item.quantity,
+      unitPriceUsd,
+      estimatedValueUsd,
+      createdAt: item.createdAt.toISOString(),
+      updatedAt: item.updatedAt.toISOString(),
+    };
   });
 
-  const totalItems = count ?? items.length;
+  const sortedItems =
+    sort === "price-desc" || sort === "price-asc"
+      ? [...allItems].sort((left, right) => {
+          if (left.unitPriceUsd === null && right.unitPriceUsd === null) {
+            return left.cardName.localeCompare(right.cardName, "en", { sensitivity: "base" });
+          }
+          if (left.unitPriceUsd === null) return 1;
+          if (right.unitPriceUsd === null) return -1;
+
+          const priceDelta = left.unitPriceUsd - right.unitPriceUsd;
+          if (priceDelta !== 0) return sort === "price-asc" ? priceDelta : -priceDelta;
+          return left.cardName.localeCompare(right.cardName, "en", { sensitivity: "base" });
+        })
+      : allItems;
+
+  const totalItems = sortedItems.length;
   const effectivePageSize = pageSize ?? Math.max(totalItems, DEFAULT_COLLECTION_PAGE_SIZE);
+  const pageStart = pageSize === null ? 0 : (page - 1) * effectivePageSize;
+  const pageEnd = pageSize === null ? sortedItems.length : pageStart + effectivePageSize;
+  const items = sortedItems.slice(pageStart, pageEnd);
 
   return {
     items,
-    uniqueCards: new Set(items.map((item) => item.providerCardId)).size,
-    uniqueVariants: items.length,
-    totalCopies: items.reduce((total, item) => total + item.quantity, 0),
-    estimatedValueUsd: items.reduce(
+    uniqueCards: new Set(sortedItems.map((item) => item.providerCardId)).size,
+    uniqueVariants: sortedItems.length,
+    totalCopies: sortedItems.reduce((total, item) => total + item.quantity, 0),
+    estimatedValueUsd: sortedItems.reduce(
       (total, item) => total + (item.estimatedValueUsd ?? 0),
       0,
     ),
-    unpricedVariants: items.filter((item) => item.unitPriceUsd === null).length,
+    unpricedVariants: sortedItems.filter((item) => item.unitPriceUsd === null).length,
     page,
     pageSize: effectivePageSize,
     totalItems,

@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 import { CollectionCardGrid } from "@/components/collection/collection-card-grid";
 import type { CollectionSummaryDto } from "@/lib/collection/types";
@@ -15,59 +15,6 @@ const SORT_OPTIONS: { value: CollectionSortOption; label: string }[] = [
   { value: "price-desc", label: "Card price: high to low" },
   { value: "price-asc", label: "Card price: low to high" },
 ];
-
-function compareCardIdentity(left: CollectionItemDto, right: CollectionItemDto) {
-  return (
-    left.cardName.localeCompare(right.cardName, "en", { sensitivity: "base" }) ||
-    left.setName.localeCompare(right.setName, "en", { sensitivity: "base" }) ||
-    left.cardNumber.localeCompare(right.cardNumber, "en", { numeric: true })
-  );
-}
-
-function getTimestamp(value: string) {
-  const timestamp = Date.parse(value);
-  return Number.isFinite(timestamp) ? timestamp : 0;
-}
-
-function normalizeFilterText(value: string) {
-  return value.trim().toLocaleLowerCase("en-US");
-}
-
-function sortCollectionItems(items: CollectionItemDto[], sort: CollectionSortOption) {
-  return [...items].sort((left, right) => {
-    if (sort === "created-desc" || sort === "created-asc") {
-      const dateDelta = getTimestamp(left.createdAt) - getTimestamp(right.createdAt);
-      if (dateDelta !== 0) return sort === "created-asc" ? dateDelta : -dateDelta;
-      return compareCardIdentity(left, right);
-    }
-
-    if (left.unitPriceUsd === null && right.unitPriceUsd === null) return compareCardIdentity(left, right);
-    if (left.unitPriceUsd === null) return 1;
-    if (right.unitPriceUsd === null) return -1;
-
-    const priceDelta = left.unitPriceUsd - right.unitPriceUsd;
-    if (priceDelta !== 0) return sort === "price-asc" ? priceDelta : -priceDelta;
-    return compareCardIdentity(left, right);
-  });
-}
-
-function filterCollectionItems(input: {
-  items: CollectionItemDto[];
-  query: string;
-  selectedSetIds: string[];
-}) {
-  const normalizedQuery = normalizeFilterText(input.query);
-  const selectedSetIds = new Set(input.selectedSetIds);
-
-  return input.items.filter((item) => {
-    const matchesQuery =
-      normalizedQuery.length === 0 ||
-      normalizeFilterText(`${item.cardName} ${item.cardNumber}`).includes(normalizedQuery);
-    const matchesSet = selectedSetIds.size === 0 || selectedSetIds.has(item.providerSetId);
-
-    return matchesQuery && matchesSet;
-  });
-}
 
 export function CollectionBrowser({
   initialItems,
@@ -91,16 +38,69 @@ export function CollectionBrowser({
   const [isSortMenuOpen, setIsSortMenuOpen] = useState(false);
   const [isSetMenuOpen, setIsSetMenuOpen] = useState(false);
   const [loadedPage, setLoadedPage] = useState(initialPage);
+  const [visibleTotalItems, setVisibleTotalItems] = useState(totalItems);
   const [hasNextPage, setHasNextPage] = useState(initialHasNextPage);
   const [isLoadingMore, setIsLoadingMore] = useState(false);
+  const [isRefreshing, setIsRefreshing] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
+  const hasMountedRef = useRef(false);
   const selectedOption = SORT_OPTIONS.find((option) => option.value === sort) ?? SORT_OPTIONS[0];
-  const filteredItems = useMemo(
-    () => filterCollectionItems({ items, query, selectedSetIds }),
-    [items, query, selectedSetIds],
-  );
-  const sortedItems = useMemo(() => sortCollectionItems(filteredItems, sort), [filteredItems, sort]);
   const hasActiveFilters = query.trim().length > 0 || selectedSetIds.length > 0;
+
+  const buildCollectionParams = useCallback((page: number) => {
+    const params = new URLSearchParams({
+      page: String(page),
+      pageSize: String(pageSize),
+      sort,
+    });
+    const trimmedQuery = query.trim();
+
+    if (trimmedQuery) params.set("query", trimmedQuery);
+    if (selectedSetIds.length > 0) params.set("setIds", selectedSetIds.join(","));
+
+    return params;
+  }, [pageSize, query, selectedSetIds, sort]);
+
+  useEffect(() => {
+    if (!hasMountedRef.current) {
+      hasMountedRef.current = true;
+      return;
+    }
+
+    const controller = new AbortController();
+    const timeout = window.setTimeout(async () => {
+      setIsRefreshing(true);
+      setLoadError(null);
+
+      try {
+        const response = await fetch(`/api/collection?${buildCollectionParams(1)}`, {
+          headers: { Accept: "application/json" },
+          signal: controller.signal,
+        });
+
+        if (!response.ok) {
+          throw new Error("Unable to refresh your collection.");
+        }
+
+        const payload = (await response.json()) as CollectionSummaryDto;
+        setItems(payload.items);
+        setLoadedPage(payload.page);
+        setVisibleTotalItems(payload.totalItems);
+        setHasNextPage(payload.hasNextPage);
+      } catch (error) {
+        if (!(error instanceof DOMException && error.name === "AbortError")) {
+          setLoadError(error instanceof Error ? error.message : "Unable to refresh your collection.");
+        }
+      } finally {
+        setIsRefreshing(false);
+      }
+    }, query.trim() ? 250 : 0);
+
+    return () => {
+      window.clearTimeout(timeout);
+      controller.abort();
+    };
+  }, [buildCollectionParams, query]);
 
   function toggleSet(setId: string) {
     setSelectedSetIds((current) =>
@@ -122,10 +122,7 @@ export function CollectionBrowser({
 
     try {
       const nextPage = loadedPage + 1;
-      const params = new URLSearchParams({
-        page: String(nextPage),
-        pageSize: String(pageSize),
-      });
+      const params = buildCollectionParams(nextPage);
       const response = await fetch(`/api/collection?${params}`, {
         headers: { Accept: "application/json" },
       });
@@ -140,6 +137,7 @@ export function CollectionBrowser({
         return [...current, ...payload.items.filter((item) => !seen.has(item.id))];
       });
       setLoadedPage(payload.page);
+      setVisibleTotalItems(payload.totalItems);
       setHasNextPage(payload.hasNextPage);
     } catch (error) {
       setLoadError(error instanceof Error ? error.message : "Unable to load more cards.");
@@ -266,7 +264,7 @@ export function CollectionBrowser({
 
           <div className="collection-filter-actions">
             <p className="text-sm font-semibold text-[var(--muted)]">
-              Showing {sortedItems.length} of {items.length} loaded
+              Showing {items.length} of {visibleTotalItems} matching
             </p>
             {hasActiveFilters ? (
               <button type="button" className="collection-clear-button" onClick={clearFilters}>
@@ -277,12 +275,12 @@ export function CollectionBrowser({
         </div>
       </div>
 
-      {sortedItems.length > 0 ? (
+      {items.length > 0 ? (
         <>
-          <CollectionCardGrid items={sortedItems} />
+          <CollectionCardGrid items={items} />
           <div className="collection-pagination">
             <p className="text-sm font-semibold text-[var(--muted)]">
-              Loaded {items.length} of {totalItems}
+              {isRefreshing ? "Refreshing..." : `Loaded ${items.length} of ${visibleTotalItems}`}
             </p>
             {loadError ? <p className="text-sm font-semibold text-[var(--danger)]">{loadError}</p> : null}
             {hasNextPage ? (

@@ -70,25 +70,25 @@ Implemented:
 - `getCurrentCollection()` now uses one nested Supabase select for collection items, variants, cards, and sets instead of four dependent reads.
 - Collection reads now include an explicit `user_id` filter in addition to the existing RLS boundary.
 - The collection DTO and UI behavior are unchanged.
-- Collection filtering by card text and set is implemented in the client collection browser.
+- Collection filtering by card text and set is implemented through the paged collection API.
 - Set filtering uses the full local catalog set list, not only sets already represented in the user's collection.
 - Collection grid items now load through server-side pages, with the first page rendered by `/collection` and additional pages fetched from `/api/collection`.
 - Added `src/app/collection/loading.tsx` so navigation to the collection page shows an immediate skeleton while private collection data loads.
+- Follow-up implemented on July 3, 2026: `getCurrentCollection()` now uses a Drizzle join for collection items, variants, cards, and sets; `/api/collection` accepts `query`, `setIds`, and `sort`; and `CollectionBrowser` refetches filtered/sorted pages from the server instead of filtering only the loaded client page.
 
 Still pending:
 
 - Defer finish, condition, and unpriced-status filters until collection grouping or server-side filtering makes them more useful.
-- Revisit server-side filter/sort parameters when collections are large enough that client filtering over loaded pages is not sufficient.
 - Move collection valuation to `current_prices` after the price refresh design is implemented.
 
 `getCurrentCollection()` fetches collection rows, variants, cards, and sets through multiple dependent Supabase queries (`src/lib/collection/data.ts:71-120`). That is fine for small data, but it will become a noticeable latency source as collections grow. The July 2 work already improved set progress with one nested select (`src/lib/collection/data.ts:22-55`); the main collection view would benefit from the same treatment.
 
 Recommended direction:
 
-- Use a single nested Supabase select or a Drizzle join for collection cards.
-- Add server-side pagination and filtering before very large binders become common.
+- Implemented: use a Drizzle join for collection cards.
+- Implemented: add server-side pagination, filtering, and sorting before very large binders become common.
 - Move valuation reads toward `current_prices` once price refresh exists, instead of recomputing from `cards.provider_data`.
-- Keep the current client-side sort for small collections, then switch to server-side sort for large collections or high-cardinality filters.
+- Keep price sorting on the server for now, then make it database-native once `current_prices` becomes the source of truth.
 
 ### 3. Turn the existing price tables into the source of truth when ready
 
@@ -175,21 +175,21 @@ Recommended additions:
 
 ## Suggested Next Pass
 
-1. Add server-side collection filter/sort parameters once larger binders need filtering beyond loaded pages.
-2. Add Playwright smoke coverage for the core user journey.
-3. Design the price refresh job and then wire `current_prices`/`price_points`.
-4. Revisit eBay listing cards after developer approval and keep outbound search links as fallback.
+1. Add Playwright smoke coverage for the core user journey.
+2. Design the price refresh job and then wire `current_prices`/`price_points`.
+3. Revisit eBay listing cards after developer approval and keep outbound search links as fallback.
 
 ## Next Session Starting Point
 
-Start with collection scalability:
+Start with browser smoke coverage:
 
-- Add server-side collection filter/sort parameters for the paged collection API.
-- Keep the current client controls working, but move the expensive filtering/sorting closer to the database as collections grow.
-- Preserve the current collection DTO/UI behavior while making the data boundary more scalable.
+- Add Playwright and a small smoke suite for the core user journey.
+- Cover search, card detail, collection page access, and the collection filter/sort controls.
+- Decide whether auth-dependent add/update/remove flows should use a seeded test user or stay manual until test-user setup is ready.
 - Verify with:
 
 ```bash
+npm run test:e2e
 npm run typecheck
 npm run lint
 npm run build

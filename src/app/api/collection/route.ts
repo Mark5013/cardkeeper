@@ -1,11 +1,14 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 
-import { getCurrentCollection } from "@/lib/collection/data";
+import { getCurrentCollection, normalizeCollectionSort } from "@/lib/collection/data";
 
 const collectionPageSchema = z.object({
   page: z.coerce.number().int().min(1).max(1000).default(1),
   pageSize: z.coerce.number().int().min(1).max(60).default(24),
+  query: z.string().trim().max(100).optional().default(""),
+  setIds: z.string().trim().max(2000).optional().default(""),
+  sort: z.string().optional(),
 });
 
 export async function GET(request: Request) {
@@ -17,7 +20,17 @@ export async function GET(request: Request) {
   }
 
   try {
-    const collection = await getCurrentCollection(parsed.data);
+    const collection = await getCurrentCollection({
+      page: parsed.data.page,
+      pageSize: parsed.data.pageSize,
+      query: parsed.data.query,
+      setIds: parsed.data.setIds
+        .split(",")
+        .map((setId) => setId.trim())
+        .filter(Boolean)
+        .slice(0, 100),
+      sort: normalizeCollectionSort(parsed.data.sort),
+    });
 
     if (!collection) {
       return NextResponse.json({ error: "Authentication required." }, { status: 401 });
