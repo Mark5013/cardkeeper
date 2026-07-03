@@ -79,7 +79,7 @@ Implemented:
 Still pending:
 
 - Defer finish, condition, and unpriced-status filters until collection grouping or server-side filtering makes them more useful.
-- Move collection valuation to `current_prices` after the price refresh design is implemented.
+- Add unpriced-status filtering now that collection valuation reads from `current_prices`.
 
 `getCurrentCollection()` fetches collection rows, variants, cards, and sets through multiple dependent Supabase queries (`src/lib/collection/data.ts:71-120`). That is fine for small data, but it will become a noticeable latency source as collections grow. The July 2 work already improved set progress with one nested select (`src/lib/collection/data.ts:22-55`); the main collection view would benefit from the same treatment.
 
@@ -87,19 +87,45 @@ Recommended direction:
 
 - Implemented: use a Drizzle join for collection cards.
 - Implemented: add server-side pagination, filtering, and sorting before very large binders become common.
-- Move valuation reads toward `current_prices` once price refresh exists, instead of recomputing from `cards.provider_data`.
+- Implemented: move valuation reads toward `current_prices`, with imported provider data as fallback.
 - Keep price sorting on the server for now, then make it database-native once `current_prices` becomes the source of truth.
 
 ### 3. Turn the existing price tables into the source of truth when ready
 
-The July 2 handoff is explicit that pricing still comes from the imported Pokemon TCG payload (`docs/SESSION_HANDOFF_2026-07-02.md:161-164`). The schema already has `current_prices` and `price_points` (`src/db/schema.ts:122-170`), and card detail still shows a placeholder history panel (`src/app/cards/[id]/page.tsx:218`).
+Status: Implemented on July 3, 2026.
+
+Implemented:
+
+- Added `scripts/refresh-prices-tcgcsv.mjs` to import TCGCSV-backed TCGplayer prices into `current_prices` and `price_points`.
+- Added `npm run prices:refresh`.
+- Ran a full TCGCSV refresh after a dry run and safer set-matching pass.
+- Current database coverage after refresh:
+  - 20,359 total cards
+  - 18,028 cards with at least one TCGCSV market price
+  - 88.55% card-level market-price coverage
+  - 32,106 total variants
+  - 31,373 variants with a TCGCSV market price
+  - 97.72% variant-level market-price coverage
+- Catalog search, set, card detail, and collection valuation paths now prefer refreshed TCGCSV prices from `current_prices`, with imported Pokemon TCG provider data as fallback.
+- Added `.github/workflows/refresh-prices.yml` to run the refresh nightly and on manual dispatch.
+- The scheduled workflow runs `npm run prices:refresh -- --skip-if-current`, checks TCGCSV `last-updated.txt`, and skips the full sync when the local TCGCSV prices already match the latest build.
+- The script sets a custom TCGCSV `User-Agent`, throttles requests, uses server-side ingestion into Supabase, and stays well under TCGCSV's 10,000-request guidance. A full Pokemon refresh is roughly 436 TCGCSV requests before retries.
+- README now documents manual refreshes, dry runs, `--reset-source`, and the scheduled workflow.
+
+Operational notes:
+
+- GitHub Actions needs a `DATABASE_URL` repository secret under **Settings > Secrets and variables > Actions**.
+- The database password was pasted into chat during setup. Rotate the Supabase database password and update both `.env.local` and the GitHub `DATABASE_URL` secret.
+- Use `--reset-source` only when deliberately replacing the existing TCGCSV snapshot; normal scheduled refreshes should use `--skip-if-current`.
+
+Original finding: the July 2 handoff was explicit that pricing still came from the imported Pokemon TCG payload (`docs/SESSION_HANDOFF_2026-07-02.md:161-164`). The schema already had `current_prices` and `price_points` (`src/db/schema.ts:122-170`), and card detail still showed a placeholder history panel (`src/app/cards/[id]/page.tsx:218`).
 
 Recommended direction:
 
-- Design the refresh job before coding: source, cadence, retry policy, and whether refreshes track all catalog variants or only collected variants.
-- Write latest values to `current_prices` and append observations to `price_points`.
-- Keep missing prices as missing, never zero.
-- Preserve source, currency, price type, finish, and `observed_at`.
+- Implemented: design the refresh job before coding. Source is TCGCSV, cadence is nightly GitHub Actions, retries are exponential with capped attempts, and refreshes track catalog variants rather than only collected variants.
+- Implemented: write latest values to `current_prices` and append observations to `price_points`.
+- Implemented: keep missing prices as missing, never zero.
+- Implemented: preserve source, currency, price type, finish, and `observed_at`.
 - Defer condition-specific pricing until a real condition-aware provider is chosen.
 
 ### 4. Improve local catalog freshness and reconciliation
@@ -169,23 +195,24 @@ Recommended additions:
 
 - Unit tests for `parseCardSearchQuery`, local search ranking, printing normalization, condition mapping, and safe redirect handling.
 - Route handler tests for search validation, collection mutation validation, unauthenticated responses, and same-origin rejection.
-- Playwright smoke tests for signup/login happy path, search, card detail, add/update/remove collection item, and collection sort.
+- Implemented initial Playwright smoke tests on July 3, 2026 for public search, card detail, anonymous collection redirect, and the search input prefill behavior on results.
+- Add Playwright coverage for signup/login happy path, authenticated collection add/update/remove, and collection sort/filter once a seeded test user strategy is chosen.
 - A lightweight catalog import dry-run check in deployment or release docs.
 - Production monitoring for route errors, DB connection saturation, slow queries, and provider/import failures.
 
 ## Suggested Next Pass
 
-1. Add Playwright smoke coverage for the core user journey.
-2. Design the price refresh job and then wire `current_prices`/`price_points`.
+1. Add authenticated Playwright coverage with a seeded test user.
+2. Add a price history display now that `price_points` is being populated.
 3. Revisit eBay listing cards after developer approval and keep outbound search links as fallback.
 
 ## Next Session Starting Point
 
-Start with browser smoke coverage:
+Continue browser smoke coverage:
 
-- Add Playwright and a small smoke suite for the core user journey.
-- Cover search, card detail, collection page access, and the collection filter/sort controls.
-- Decide whether auth-dependent add/update/remove flows should use a seeded test user or stay manual until test-user setup is ready.
+- Initial Playwright coverage is in place for public search, card detail, and anonymous collection redirect.
+- Next, decide whether auth-dependent add/update/remove flows should use a seeded test user or stay manual until test-user setup is ready.
+- If seeded auth is approved, cover login, collection page access, add/update/remove collection item, and collection filter/sort controls.
 - Verify with:
 
 ```bash

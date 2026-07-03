@@ -125,12 +125,15 @@ export function CardSearch({ initialQuery = "" }: { initialQuery?: string }) {
       <form
         ref={searchFormRef}
         className="mt-6 grid gap-4 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-end"
+        action="/search"
+        method="get"
         onSubmit={handleSubmit}
       >
         <label className="combobox-wrap">
           <span className="field-label">Card name and optional number</span>
           <input
             className="search-input"
+            name="query"
             value={query}
             onChange={(event) => {
               const nextQuery = event.target.value;
