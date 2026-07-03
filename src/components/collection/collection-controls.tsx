@@ -72,7 +72,10 @@ export function CollectionControls({
     try {
       const response = await fetch(`/api/collection/cards/${encodeURIComponent(cardId)}`, {
         method: "PUT",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          "X-Cardkeeper-Request": "same-origin",
+        },
         body: JSON.stringify({ printing, condition, quantity: parsedQuantity }),
       });
       const payload = (await response.json()) as SaveResponse;
@@ -107,7 +110,10 @@ export function CollectionControls({
     try {
       const response = await fetch(
         `/api/collection/${encodeURIComponent(selectedHolding.variantId)}`,
-        { method: "DELETE" },
+        {
+          method: "DELETE",
+          headers: { "X-Cardkeeper-Request": "same-origin" },
+        },
       );
 
       if (!response.ok) {

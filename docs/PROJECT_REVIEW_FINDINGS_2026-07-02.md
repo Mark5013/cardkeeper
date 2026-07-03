@@ -196,23 +196,24 @@ Recommended additions:
 - Unit tests for `parseCardSearchQuery`, local search ranking, printing normalization, condition mapping, and safe redirect handling.
 - Route handler tests for search validation, collection mutation validation, unauthenticated responses, and same-origin rejection.
 - Implemented initial Playwright smoke tests on July 3, 2026 for public search, card detail, anonymous collection redirect, and the search input prefill behavior on results.
-- Add Playwright coverage for signup/login happy path, authenticated collection add/update/remove, and collection sort/filter once a seeded test user strategy is chosen.
+- Implemented seeded authenticated Playwright coverage on July 3, 2026 for login, collection access, add/update/remove through authenticated collection routes, and collection filter/sort UI verification.
+- Add Playwright coverage for signup happy path once test-user lifecycle and email confirmation handling are finalized.
 - A lightweight catalog import dry-run check in deployment or release docs.
 - Production monitoring for route errors, DB connection saturation, slow queries, and provider/import failures.
 
 ## Suggested Next Pass
 
-1. Add authenticated Playwright coverage with a seeded test user.
-2. Add a price history display now that `price_points` is being populated.
-3. Revisit eBay listing cards after developer approval and keep outbound search links as fallback.
+1. Add a price history display now that `price_points` is being populated.
+2. Revisit eBay listing cards after developer approval and keep outbound search links as fallback.
+3. Add signup happy-path coverage once test-user lifecycle and email confirmation handling are finalized.
 
 ## Next Session Starting Point
 
-Continue browser smoke coverage:
+Next product pass:
 
-- Initial Playwright coverage is in place for public search, card detail, and anonymous collection redirect.
-- Next, decide whether auth-dependent add/update/remove flows should use a seeded test user or stay manual until test-user setup is ready.
-- If seeded auth is approved, cover login, collection page access, add/update/remove collection item, and collection filter/sort controls.
+- Browser smoke coverage is in place for public search, card detail, anonymous collection redirect, seeded login, collection page access, authenticated add/update/remove route flows, and collection filter/sort controls.
+- Start the price history UI using populated `price_points`.
+- Keep signup happy-path coverage pending until test-user lifecycle and email confirmation handling are finalized.
 - Verify with:
 
 ```bash
