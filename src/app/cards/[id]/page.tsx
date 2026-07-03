@@ -1,8 +1,8 @@
 import type { Metadata } from "next";
-import Image from "next/image";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 
+import { ImageWithFallback } from "@/components/image-with-fallback";
 import { SiteHeader } from "@/components/site-header";
 import { CollectionControls } from "@/components/collection/collection-controls";
 import { getCatalogPokemonCard } from "@/lib/catalog/data";
@@ -115,7 +115,7 @@ export default async function CardDetailPage({ params }: { params: Promise<{ id:
         <div className="mt-7 grid gap-10 lg:grid-cols-[minmax(17rem,25rem)_minmax(0,1fr)] lg:gap-16">
           <div>
             <div className="relative mx-auto aspect-[245/342] w-full max-w-[25rem] overflow-hidden rounded-lg bg-[var(--surface-2)] shadow-[0_24px_60px_rgb(0_0_0_/_34%)]">
-              <Image
+              <ImageWithFallback
                 src={card.images.large}
                 alt={`${card.name} card from ${card.set.name}`}
                 fill

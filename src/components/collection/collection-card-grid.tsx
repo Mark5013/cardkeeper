@@ -1,6 +1,6 @@
-import Image from "next/image";
 import Link from "next/link";
 
+import { ImageWithFallback } from "@/components/image-with-fallback";
 import { CARD_CONDITIONS } from "@/lib/collection/options";
 import type { CollectionItemDto } from "@/lib/collection/types";
 import { formatPrinting } from "@/lib/pokemon-tcg/printing";
@@ -21,17 +21,13 @@ export function CollectionCardGrid({ items }: { items: CollectionItemDto[] }) {
           key={item.id}
         >
           <div className="relative aspect-[4/3] overflow-hidden bg-[var(--surface-2)]">
-            {item.imageSmallUrl ? (
-              <Image
-                src={item.imageSmallUrl}
-                alt={`${item.cardName} card`}
-                fill
-                sizes="(max-width: 640px) 90vw, (max-width: 1024px) 45vw, (max-width: 1280px) 30vw, 22vw"
-                className="object-contain p-5 transition duration-300 group-hover:scale-[1.03]"
-              />
-            ) : (
-              <div className="grid h-full place-items-center text-xs text-[var(--muted)]">No card image</div>
-            )}
+            <ImageWithFallback
+              src={item.imageSmallUrl}
+              alt={`${item.cardName} card`}
+              fill
+              sizes="(max-width: 640px) 90vw, (max-width: 1024px) 45vw, (max-width: 1280px) 30vw, 22vw"
+              className="object-contain p-5 transition duration-300 group-hover:scale-[1.03]"
+            />
             <span className="absolute right-3 top-3 rounded-full border border-[var(--line)] bg-[var(--background)] px-2.5 py-0.5 text-xs font-bold text-[var(--ink)] shadow-[0_10px_24px_rgb(0_0_0_/_28%)]">
               × {item.quantity}
             </span>

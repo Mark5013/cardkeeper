@@ -1,9 +1,9 @@
 "use client";
 
-import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { FormEvent, KeyboardEvent, useEffect, useRef, useState, useTransition } from "react";
 
+import { ImageWithFallback } from "@/components/image-with-fallback";
 import type { CardSearchPayload, CardSearchResult } from "@/lib/pokemon-tcg/types";
 
 type SearchResponse = Partial<CardSearchPayload> & { error?: string };
@@ -171,7 +171,7 @@ export function CardSearch({ initialQuery = "" }: { initialQuery?: string }) {
                     onClick={() => openCard(card)}
                   >
                     <span className="suggestion-art">
-                      <Image src={card.imageSmallUrl} alt="" fill sizes="40px" className="object-cover" />
+                      <ImageWithFallback src={card.imageSmallUrl} alt="" fill sizes="40px" className="object-cover" />
                     </span>
                     <span className="min-w-0 text-left">
                       <span className="block truncate font-semibold text-[var(--ink)]">{card.name}</span>

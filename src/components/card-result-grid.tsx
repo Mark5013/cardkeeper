@@ -1,6 +1,6 @@
-import Image from "next/image";
 import Link from "next/link";
 
+import { ImageWithFallback } from "@/components/image-with-fallback";
 import type { CardSearchResult } from "@/lib/pokemon-tcg/types";
 
 const usd = new Intl.NumberFormat("en-US", {
@@ -20,7 +20,7 @@ export function CardResultGrid({ cards }: { cards: CardSearchResult[] }) {
         >
           <div className="grid grid-cols-[7rem_minmax(0,1fr)] gap-5 p-5">
             <div className="relative aspect-[245/342] overflow-hidden rounded-md bg-[var(--surface-2)] shadow-[0_12px_28px_rgb(0_0_0_/_28%)]">
-              <Image
+              <ImageWithFallback
                 src={card.imageSmallUrl}
                 alt={`${card.name} card`}
                 fill
