@@ -43,11 +43,13 @@ npm run catalog:test-search
 
 Passed 7/7 checks, including fixture rollback.
 
-Future enhancement:
+Follow-up implemented on July 3, 2026:
 
-- Use Postgres trigram similarity for the local closest-match path. The indexes are now in place, but `src/lib/catalog/data.ts` still uses relaxed prefix candidates plus JavaScript Levenshtein sorting for closest results. This is a good next search-specific improvement after the stale product-copy cleanup, and should include tests for misspellings, punctuation, and multi-word fuzzy queries.
+- The local closest-match path now uses Postgres trigram similarity instead of relaxed prefix candidates plus JavaScript Levenshtein sorting.
+- Closest-match queries now use DB-native count, limit, and offset, preserving pagination behavior for fuzzy results.
+- `scripts/test-catalog-search.mjs` now covers misspelled names, fuzzy name plus exact number filtering, and multi-word fuzzy queries.
 
-The local catalog search currently tokenizes the name and applies each token as `lower(cards.name) like token%` against the full name in `src/lib/catalog/data.ts:249` and `src/lib/catalog/data.ts:267-268`. That works for a single leading token, but multi-word names can miss exact local matches because the same full string cannot start with every token at once. Queries like `Mr Mime`, `Pikachu ex`, or a multi-word name plus number can fall through to closest-match behavior.
+The original local catalog search tokenized the name and applied each token as `lower(cards.name) like token%` against the full name. That worked for a single leading token, but multi-word names could miss exact local matches because the same full string cannot start with every token at once. Queries like `Mr Mime`, `Pikachu ex`, or a multi-word name plus number could fall through to closest-match behavior.
 
 The same path also loads up to 250 local rows and then paginates in memory (`src/lib/catalog/data.ts:286`, `src/lib/catalog/data.ts:102-119`). That makes broad result counts and infinite-scroll depth cap out at the first 250 matches even if the database has more.
 
@@ -173,23 +175,23 @@ Recommended additions:
 
 ## Suggested Next Pass
 
-1. Upgrade local closest-match search to use Postgres trigram similarity and add fuzzy-search regression checks.
-2. Add server-side collection filter/sort parameters once larger binders need filtering beyond loaded pages.
-3. Add an `updated_at` trigger migration.
-4. Add Playwright smoke coverage for the core user journey.
-5. Design the price refresh job and then wire `current_prices`/`price_points`.
-6. Revisit eBay listing cards after developer approval and keep outbound search links as fallback.
+1. Add server-side collection filter/sort parameters once larger binders need filtering beyond loaded pages.
+2. Add an `updated_at` trigger migration.
+3. Add Playwright smoke coverage for the core user journey.
+4. Design the price refresh job and then wire `current_prices`/`price_points`.
+5. Revisit eBay listing cards after developer approval and keep outbound search links as fallback.
 
 ## Next Session Starting Point
 
-Start with the trigram closest-match search follow-up:
+Start with the next database hygiene improvement:
 
-- Replace the relaxed-prefix plus JavaScript Levenshtein closest-match path in `src/lib/catalog/data.ts` with a Postgres trigram similarity query using the normalized-name expression already indexed by `drizzle/0002_search_indexes.sql`.
-- Extend `scripts/test-catalog-search.mjs` with misspelling cases such as `Pikchu`, punctuation variants, and multi-word fuzzy queries.
+- Add a generic `updated_at` trigger migration for tables that rely on manually maintained `updated_at` values.
+- Keep app-level explicit `updated_at` writes where they are already harmless, but let the database protect future writes from drift.
+- Verify the migration against the configured database and rerun the standard checks.
 - Verify with:
 
 ```bash
-npm run catalog:test-search
+npm run db:migrate
 npm run typecheck
 npm run lint
 npm run build

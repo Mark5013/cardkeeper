@@ -93,6 +93,37 @@ async function searchByTokens(sql, { name, number = null, page = 1, pageSize = 2
   return { rows, totalCount: count };
 }
 
+async function searchByTrigram(sql, { name, number = null, page = 1, pageSize = 24 }) {
+  const normalizedName = normalizeSearchText(name);
+  const offset = (page - 1) * pageSize;
+  const [{ count }] = await sql`
+    select count(*)::int as count
+    from public.cards
+    where language_code = 'en'
+      and trim(regexp_replace(lower(name), '[^a-z0-9]+', ' ', 'g')) % ${normalizedName}
+      and (${number}::text is null or lower(number) = ${number})
+  `;
+  const rows = await sql`
+    select provider_id, name, number
+    from public.cards
+    where language_code = 'en'
+      and trim(regexp_replace(lower(name), '[^a-z0-9]+', ' ', 'g')) % ${normalizedName}
+      and (${number}::text is null or lower(number) = ${number})
+    order by greatest(
+        similarity(trim(regexp_replace(lower(name), '[^a-z0-9]+', ' ', 'g')), ${normalizedName}),
+        word_similarity(trim(regexp_replace(lower(name), '[^a-z0-9]+', ' ', 'g')), ${normalizedName})
+      ) desc,
+      name asc,
+      case when number ~ '^[0-9]+' then substring(number from '^[0-9]+')::integer else null end asc nulls last,
+      number asc,
+      provider_id asc
+    limit ${pageSize}
+    offset ${offset}
+  `;
+
+  return { rows, totalCount: count };
+}
+
 try {
   try {
     await client.begin(async (sql) => {
@@ -113,7 +144,9 @@ try {
         values
           (${`${fixtureKey}-mr-mime`}, ${set.id}, 'en', 'Mr. Mime', '6'),
           (${`${fixtureKey}-pikachu-ex`}, ${set.id}, 'en', 'Pikachu ex', '7'),
-          (${`${fixtureKey}-team-rocket`}, ${set.id}, 'en', 'Team Rocket''s Pikachu', '8')
+          (${`${fixtureKey}-team-rocket`}, ${set.id}, 'en', 'Team Rocket''s Pikachu', '8'),
+          (${`${fixtureKey}-azure-sentinel`}, ${set.id}, 'en', 'Azure Search Sentinel', '9'),
+          (${`${fixtureKey}-crimson-ranger`}, ${set.id}, 'en', 'Crimson Catalog Ranger', '10')
       `;
 
       await sql`
@@ -156,6 +189,34 @@ try {
       });
       check("Broad local search counts beyond 250 rows", broadPage.totalCount === 260);
       check("Broad local search can read rows after offset 250", broadPage.rows.length === 10);
+
+      const misspelledPikachu = await searchByTrigram(sql, {
+        name: "Azre Search Sentnel",
+        pageSize: 5,
+      });
+      check(
+        "Trigram closest search handles misspelled names",
+        misspelledPikachu.rows[0]?.provider_id === `${fixtureKey}-azure-sentinel`,
+      );
+
+      const misspelledNameNumber = await searchByTrigram(sql, {
+        name: "Azre Search Sentnel",
+        number: "9",
+        pageSize: 5,
+      });
+      check(
+        "Trigram closest search preserves exact number filtering",
+        misspelledNameNumber.rows.some((row) => row.provider_id === `${fixtureKey}-azure-sentinel`),
+      );
+
+      const misspelledMultiWord = await searchByTrigram(sql, {
+        name: "Crimson Catalg Rangr",
+        pageSize: 5,
+      });
+      check(
+        "Trigram closest search handles multi-word fuzzy queries",
+        misspelledMultiWord.rows.some((row) => row.provider_id === `${fixtureKey}-crimson-ranger`),
+      );
 
       throw rollbackSignal;
     });
