@@ -4,6 +4,7 @@ export type CollectionItemDto = {
   providerCardId: string;
   cardName: string;
   cardNumber: string;
+  providerSetId: string;
   setName: string;
   imageSmallUrl: string | null;
   printing: string;

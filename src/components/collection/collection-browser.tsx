@@ -6,6 +6,7 @@ import { CollectionCardGrid } from "@/components/collection/collection-card-grid
 import type { CollectionItemDto } from "@/lib/collection/types";
 
 type CollectionSortOption = "created-desc" | "created-asc" | "price-desc" | "price-asc";
+type CollectionSetOption = { id: string; name: string };
 
 const SORT_OPTIONS: { value: CollectionSortOption; label: string }[] = [
   { value: "created-desc", label: "Newest added" },
@@ -27,6 +28,10 @@ function getTimestamp(value: string) {
   return Number.isFinite(timestamp) ? timestamp : 0;
 }
 
+function normalizeFilterText(value: string) {
+  return value.trim().toLocaleLowerCase("en-US");
+}
+
 function sortCollectionItems(items: CollectionItemDto[], sort: CollectionSortOption) {
   return [...items].sort((left, right) => {
     if (sort === "created-desc" || sort === "created-asc") {
@@ -45,11 +50,55 @@ function sortCollectionItems(items: CollectionItemDto[], sort: CollectionSortOpt
   });
 }
 
-export function CollectionBrowser({ items }: { items: CollectionItemDto[] }) {
+function filterCollectionItems(input: {
+  items: CollectionItemDto[];
+  query: string;
+  selectedSetIds: string[];
+}) {
+  const normalizedQuery = normalizeFilterText(input.query);
+  const selectedSetIds = new Set(input.selectedSetIds);
+
+  return input.items.filter((item) => {
+    const matchesQuery =
+      normalizedQuery.length === 0 ||
+      normalizeFilterText(`${item.cardName} ${item.cardNumber}`).includes(normalizedQuery);
+    const matchesSet = selectedSetIds.size === 0 || selectedSetIds.has(item.providerSetId);
+
+    return matchesQuery && matchesSet;
+  });
+}
+
+export function CollectionBrowser({
+  items,
+  setOptions,
+}: {
+  items: CollectionItemDto[];
+  setOptions: CollectionSetOption[];
+}) {
   const [sort, setSort] = useState<CollectionSortOption>("created-desc");
-  const [isMenuOpen, setIsMenuOpen] = useState(false);
+  const [query, setQuery] = useState("");
+  const [selectedSetIds, setSelectedSetIds] = useState<string[]>([]);
+  const [isSortMenuOpen, setIsSortMenuOpen] = useState(false);
+  const [isSetMenuOpen, setIsSetMenuOpen] = useState(false);
   const selectedOption = SORT_OPTIONS.find((option) => option.value === sort) ?? SORT_OPTIONS[0];
-  const sortedItems = useMemo(() => sortCollectionItems(items, sort), [items, sort]);
+  const filteredItems = useMemo(
+    () => filterCollectionItems({ items, query, selectedSetIds }),
+    [items, query, selectedSetIds],
+  );
+  const sortedItems = useMemo(() => sortCollectionItems(filteredItems, sort), [filteredItems, sort]);
+  const hasActiveFilters = query.trim().length > 0 || selectedSetIds.length > 0;
+
+  function toggleSet(setId: string) {
+    setSelectedSetIds((current) =>
+      current.includes(setId) ? current.filter((id) => id !== setId) : [...current, setId],
+    );
+  }
+
+  function clearFilters() {
+    setQuery("");
+    setSelectedSetIds([]);
+    setIsSetMenuOpen(false);
+  }
 
   return (
     <div className="mt-10">
@@ -66,7 +115,7 @@ export function CollectionBrowser({ items }: { items: CollectionItemDto[] }) {
             className="sort-menu-wrap"
             onBlur={(event) => {
               if (!(event.relatedTarget instanceof Node) || !event.currentTarget.contains(event.relatedTarget)) {
-                setIsMenuOpen(false);
+                setIsSortMenuOpen(false);
               }
             }}
           >
@@ -74,13 +123,13 @@ export function CollectionBrowser({ items }: { items: CollectionItemDto[] }) {
               type="button"
               className="sort-menu-button"
               aria-haspopup="menu"
-              aria-expanded={isMenuOpen}
-              onClick={() => setIsMenuOpen((current) => !current)}
+              aria-expanded={isSortMenuOpen}
+              onClick={() => setIsSortMenuOpen((current) => !current)}
             >
               <span>Sort by: {selectedOption.label}</span>
               <span aria-hidden="true">v</span>
             </button>
-            {isMenuOpen ? (
+            {isSortMenuOpen ? (
               <div className="sort-menu" role="menu">
                 {SORT_OPTIONS.map((option) => (
                   <button
@@ -92,7 +141,7 @@ export function CollectionBrowser({ items }: { items: CollectionItemDto[] }) {
                     key={option.value}
                     onClick={() => {
                       setSort(option.value);
-                      setIsMenuOpen(false);
+                      setIsSortMenuOpen(false);
                     }}
                   >
                     {option.label}
@@ -103,7 +152,96 @@ export function CollectionBrowser({ items }: { items: CollectionItemDto[] }) {
           </div>
         </div>
       </div>
-      <CollectionCardGrid items={sortedItems} />
+
+      <div className="collection-filter-panel">
+        <div className="collection-filter-grid">
+          <label>
+            <span className="auth-label">Card name</span>
+            <input
+              className="auth-input"
+              type="search"
+              value={query}
+              onChange={(event) => setQuery(event.target.value)}
+              placeholder="Search your cards"
+            />
+          </label>
+
+          <div
+            className="sort-menu-wrap"
+            onBlur={(event) => {
+              if (!(event.relatedTarget instanceof Node) || !event.currentTarget.contains(event.relatedTarget)) {
+                setIsSetMenuOpen(false);
+              }
+            }}
+          >
+            <span className="auth-label">Set</span>
+            <button
+              type="button"
+              className="sort-menu-button collection-filter-button"
+              aria-haspopup="menu"
+              aria-expanded={isSetMenuOpen}
+              onClick={() => setIsSetMenuOpen((current) => !current)}
+            >
+              <span>{selectedSetIds.length === 0 ? "All sets" : `${selectedSetIds.length} selected`}</span>
+              <span aria-hidden="true">v</span>
+            </button>
+            {isSetMenuOpen ? (
+              <div className="sort-menu collection-set-menu" role="menu">
+                {setOptions.map((set) => {
+                  const isSelected = selectedSetIds.includes(set.id);
+
+                  return (
+                    <button
+                      type="button"
+                      className="sort-menu-option collection-set-option"
+                      data-active={isSelected}
+                      role="menuitemcheckbox"
+                      aria-checked={isSelected}
+                      key={set.id}
+                      onClick={() => toggleSet(set.id)}
+                    >
+                      <input
+                        className="collection-set-checkbox"
+                        type="checkbox"
+                        checked={isSelected}
+                        readOnly
+                        tabIndex={-1}
+                        aria-hidden="true"
+                      />
+                      <span>{set.name}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            ) : null}
+          </div>
+
+          <div className="collection-filter-actions">
+            <p className="text-sm font-semibold text-[var(--muted)]">
+              Showing {sortedItems.length} of {items.length}
+            </p>
+            {hasActiveFilters ? (
+              <button type="button" className="collection-clear-button" onClick={clearFilters}>
+                Clear filters
+              </button>
+            ) : null}
+          </div>
+        </div>
+      </div>
+
+      {sortedItems.length > 0 ? (
+        <CollectionCardGrid items={sortedItems} />
+      ) : (
+        <div className="rounded-lg border border-dashed border-[var(--line)] bg-[var(--surface)] px-6 py-12 text-center">
+          <h3 className="text-xl font-bold">No cards match these filters</h3>
+          <p className="mx-auto mt-2 max-w-md text-sm leading-6 text-[var(--muted)]">
+            Try a different card name or set.
+          </p>
+          <button type="button" className="mt-5 font-semibold text-[var(--secondary)] hover:underline" onClick={clearFilters}>
+            Clear filters
+          </button>
+        </div>
+      )}
     </div>
   );
 }

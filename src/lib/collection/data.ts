@@ -36,6 +36,7 @@ type CollectionRow = {
       image_small_url: string | null;
       provider_data: Record<string, unknown> | null;
       card_sets: {
+        provider_id: string;
         name: string;
       } | null;
     } | null;
@@ -117,6 +118,7 @@ export async function getCurrentCollection(): Promise<CollectionSummaryDto | nul
             image_small_url,
             provider_data,
             card_sets (
+              provider_id,
               name
             )
           )
@@ -164,6 +166,7 @@ export async function getCurrentCollection(): Promise<CollectionSummaryDto | nul
         providerCardId: card.provider_id,
         cardName: card.name,
         cardNumber: card.number,
+        providerSetId: set.provider_id,
         setName: set.name,
         imageSmallUrl: card.image_small_url,
         printing: variant.printing,

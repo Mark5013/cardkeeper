@@ -68,10 +68,12 @@ Implemented:
 - `getCurrentCollection()` now uses one nested Supabase select for collection items, variants, cards, and sets instead of four dependent reads.
 - Collection reads now include an explicit `user_id` filter in addition to the existing RLS boundary.
 - The collection DTO and UI behavior are unchanged.
+- Collection filtering by card text and set is implemented in the client collection browser.
+- Set filtering uses the full local catalog set list, not only sets already represented in the user's collection.
 
 Still pending:
 
-- Add collection filters by card name, set, finish, condition, and unpriced status.
+- Defer finish, condition, and unpriced-status filters until collection grouping or server-side filtering makes them more useful.
 - Add server-side pagination before very large collections become common.
 - Move collection valuation to `current_prices` after the price refresh design is implemented.
 

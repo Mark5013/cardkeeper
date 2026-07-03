@@ -4,6 +4,7 @@ import { redirect } from "next/navigation";
 
 import { CollectionBrowser } from "@/components/collection/collection-browser";
 import { SiteHeader } from "@/components/site-header";
+import { getCatalogPokemonSets } from "@/lib/catalog/data";
 import { getCurrentCollection } from "@/lib/collection/data";
 
 export const metadata: Metadata = { title: "My collection" };
@@ -13,6 +14,10 @@ const usd = new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" 
 export default async function CollectionPage() {
   const collection = await getCurrentCollection();
   if (!collection) redirect("/login?next=/collection");
+  const setOptions =
+    collection.items.length > 0
+      ? (await getCatalogPokemonSets()).map((set) => ({ id: set.id, name: set.name }))
+      : [];
 
   return (
     <main className="min-h-screen overflow-x-hidden">
@@ -61,7 +66,7 @@ export default async function CollectionPage() {
             </Link>
           </div>
         ) : (
-          <CollectionBrowser items={collection.items} />
+          <CollectionBrowser items={collection.items} setOptions={setOptions} />
         )}
       </section>
     </main>
