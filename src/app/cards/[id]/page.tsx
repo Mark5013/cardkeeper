@@ -3,9 +3,10 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 
 import { ImageWithFallback } from "@/components/image-with-fallback";
+import { PriceHistoryChart } from "@/components/price-history-chart";
 import { SiteHeader } from "@/components/site-header";
 import { CollectionControls } from "@/components/collection/collection-controls";
-import { getCatalogPokemonCard } from "@/lib/catalog/data";
+import { getCatalogPokemonCard, getCatalogPokemonCardPriceHistory } from "@/lib/catalog/data";
 import { getOwnedCardVariants } from "@/lib/collection/data";
 import { getCardPrintingOptions } from "@/lib/pokemon-tcg/printing";
 import type { PokemonTcgCard, PokemonTcgPrice } from "@/lib/pokemon-tcg/types";
@@ -88,6 +89,7 @@ export default async function CardDetailPage({ params }: { params: Promise<{ id:
   if (!card) notFound();
 
   const ownedVariants = await getOwnedCardVariants(card.id);
+  const priceHistory = await getCatalogPokemonCardPriceHistory(card.id);
   const printings = getCardPrintingOptions(card);
   const tcgplayerPrices = Object.entries(card.tcgplayer?.prices ?? {});
   const tcgplayerUrl = getSafeExternalUrl(card.tcgplayer?.url);
@@ -214,9 +216,7 @@ export default async function CardDetailPage({ params }: { params: Promise<{ id:
 
             <section className="detail-section">
               <h2 className="detail-heading">Price history</h2>
-              <div className="mt-4 grid min-h-48 place-items-center rounded-lg border border-dashed border-[var(--line)] bg-[var(--surface)] p-7 text-center text-[var(--muted)]">
-                Historical graphs will appear after daily price snapshots begin accumulating.
-              </div>
+              <PriceHistoryChart series={priceHistory} />
             </section>
 
             {card.abilities?.length ? (

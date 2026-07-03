@@ -4,7 +4,7 @@ import { cache } from "react";
 import { and, asc, eq, inArray, sql } from "drizzle-orm";
 
 import { db } from "@/db";
-import { cards, cardSets, cardVariants, currentPrices } from "@/db/schema";
+import { cards, cardSets, cardVariants, currentPrices, pricePoints } from "@/db/schema";
 import {
   getPokemonCard,
   getPokemonCardsBySetPage,
@@ -22,6 +22,18 @@ import type {
   PokemonTcgSet,
   SetCardsPayload,
 } from "@/lib/pokemon-tcg/types";
+import { formatPrinting } from "@/lib/pokemon-tcg/printing";
+
+export type CardPriceHistoryPoint = {
+  observedAt: string;
+  amountUsd: number;
+};
+
+export type CardPriceHistorySeries = {
+  printing: string;
+  label: string;
+  points: CardPriceHistoryPoint[];
+};
 
 function normalizeCardNumber(value: string) {
   return normalize(value).replace(/^#/, "");
@@ -449,6 +461,52 @@ export const getCatalogPokemonCard = cache(async (id: string) => {
   }
 
   return getPokemonCard(id);
+});
+
+export const getCatalogPokemonCardPriceHistory = cache(async (id: string) => {
+  try {
+    const rows = await db
+      .select({
+        printing: cardVariants.printing,
+        amountMinor: pricePoints.amountMinor,
+        observedAt: pricePoints.observedAt,
+      })
+      .from(pricePoints)
+      .innerJoin(cardVariants, eq(pricePoints.cardVariantId, cardVariants.id))
+      .innerJoin(cards, eq(cardVariants.cardId, cards.id))
+      .where(
+        and(
+          eq(cards.providerId, id),
+          eq(cards.languageCode, "en"),
+          eq(cardVariants.condition, "unspecified"),
+          eq(cardVariants.languageCode, "en"),
+          eq(pricePoints.source, "tcgcsv"),
+          eq(pricePoints.priceType, "market"),
+          eq(pricePoints.currency, "USD"),
+        ),
+      )
+      .orderBy(asc(cardVariants.printing), asc(pricePoints.observedAt));
+
+    const seriesByPrinting = new Map<string, CardPriceHistoryPoint[]>();
+
+    for (const row of rows) {
+      const points = seriesByPrinting.get(row.printing) ?? [];
+      points.push({
+        observedAt: row.observedAt.toISOString(),
+        amountUsd: row.amountMinor / 100,
+      });
+      seriesByPrinting.set(row.printing, points);
+    }
+
+    return Array.from(seriesByPrinting, ([printing, points]) => ({
+      printing,
+      label: formatPrinting(printing),
+      points,
+    }));
+  } catch (error) {
+    console.error("Local card price history failed", { cardId: id, error });
+    return [];
+  }
 });
 
 export async function searchCatalogPokemonCards(input: {

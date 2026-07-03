@@ -111,6 +111,7 @@ Implemented:
 - The scheduled workflow runs `npm run prices:refresh -- --skip-if-current`, checks TCGCSV `last-updated.txt`, and skips the full sync when the local TCGCSV prices already match the latest build.
 - The script sets a custom TCGCSV `User-Agent`, throttles requests, uses server-side ingestion into Supabase, and stays well under TCGCSV's 10,000-request guidance. A full Pokemon refresh is roughly 436 TCGCSV requests before retries.
 - README now documents manual refreshes, dry runs, `--reset-source`, and the scheduled workflow.
+- Card detail pages now render an interactive Recharts price history graph from `price_points`, with date on the x-axis, USD market price on the y-axis, printing selection, and cursor tooltip readout.
 
 Operational notes:
 
@@ -203,16 +204,16 @@ Recommended additions:
 
 ## Suggested Next Pass
 
-1. Add a price history display now that `price_points` is being populated.
-2. Revisit eBay listing cards after developer approval and keep outbound search links as fallback.
-3. Add signup happy-path coverage once test-user lifecycle and email confirmation handling are finalized.
+1. Revisit eBay listing cards after developer approval and keep outbound search links as fallback.
+2. Add signup happy-path coverage once test-user lifecycle and email confirmation handling are finalized.
+3. Add unpriced-status filtering now that collection valuation reads from `current_prices`.
 
 ## Next Session Starting Point
 
 Next product pass:
 
 - Browser smoke coverage is in place for public search, card detail, anonymous collection redirect, seeded login, collection page access, authenticated add/update/remove route flows, and collection filter/sort controls.
-- Start the price history UI using populated `price_points`.
+- Price history UI is in place using populated `price_points`.
 - Keep signup happy-path coverage pending until test-user lifecycle and email confirmation handling are finalized.
 - Verify with:
 
