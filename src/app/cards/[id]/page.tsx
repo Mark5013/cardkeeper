@@ -93,6 +93,7 @@ export default async function CardDetailPage({ params }: { params: Promise<{ id:
   const printings = getCardPrintingOptions(card);
   const tcgplayerPrices = Object.entries(card.tcgplayer?.prices ?? {});
   const tcgplayerUrl = getSafeExternalUrl(card.tcgplayer?.url);
+  const cardmarketPrices = card.cardmarket?.prices;
   const ebayUrl = buildEbaySearchUrl(card);
   const details = [
     ["Set", card.set.name],
@@ -206,10 +207,10 @@ export default async function CardDetailPage({ params }: { params: Promise<{ id:
                 </div>
               ) : <p className="mt-4 text-[var(--muted)]">No current TCGplayer prices are available.</p>}
 
-              {card.cardmarket ? (
+              {cardmarketPrices ? (
                 <div className="mt-5 flex flex-wrap gap-x-7 gap-y-2 rounded-lg border border-[var(--line)] bg-[var(--surface)] p-4 text-sm">
-                  <span>Cardmarket trend: <strong>{displayPrice(card.cardmarket.prices.trendPrice, eur)}</strong></span>
-                  <span>30-day average: <strong>{displayPrice(card.cardmarket.prices.avg30, eur)}</strong></span>
+                  <span>Cardmarket trend: <strong>{displayPrice(cardmarketPrices.trendPrice, eur)}</strong></span>
+                  <span>30-day average: <strong>{displayPrice(cardmarketPrices.avg30, eur)}</strong></span>
                 </div>
               ) : null}
             </section>

@@ -112,6 +112,10 @@ Implemented:
 - The script sets a custom TCGCSV `User-Agent`, throttles requests, uses server-side ingestion into Supabase, and stays well under TCGCSV's 10,000-request guidance. A full Pokemon refresh is roughly 436 TCGCSV requests before retries.
 - README now documents manual refreshes, dry runs, `--reset-source`, and the scheduled workflow.
 - Card detail pages now render an interactive Recharts price history graph from `price_points`, with date on the x-axis, USD market price on the y-axis, printing selection, and cursor tooltip readout.
+- Follow-up implemented on July 3, 2026: TCGCSV set matching now includes explicit aliases for provider/local set naming differences, including Rumble, Black Star promo eras, Best of Game/Best of Promos, `and`/`&` set names, McDonald's promo naming, SM Base Set, SM Burning Shadows, and split EX Trainer Kit groups.
+- Split EX Trainer Kit TCGCSV groups now map to multiple local sets using stricter card name plus number matching so shared card numbers do not attach prices to the wrong half-deck.
+- Current zero-price set-level gaps after reconciliation are `fut20` Pokemon Futsal Collection and `mcd21` McDonald's Collection 2021. TCGCSV did not expose an obvious Futsal group, and the 2021 McDonald's set was not mapped because TCGCSV does not list a 2021 McDonald's promo group.
+- Card detail pages now tolerate provider payloads where `cardmarket` exists but nested `prices` is absent.
 
 Operational notes:
 
