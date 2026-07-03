@@ -43,6 +43,10 @@ npm run catalog:test-search
 
 Passed 7/7 checks, including fixture rollback.
 
+Future enhancement:
+
+- Use Postgres trigram similarity for the local closest-match path. The indexes are now in place, but `src/lib/catalog/data.ts` still uses relaxed prefix candidates plus JavaScript Levenshtein sorting for closest results. This is a good next search-specific improvement after the stale product-copy cleanup, and should include tests for misspellings, punctuation, and multi-word fuzzy queries.
+
 The local catalog search currently tokenizes the name and applies each token as `lower(cards.name) like token%` against the full name in `src/lib/catalog/data.ts:249` and `src/lib/catalog/data.ts:267-268`. That works for a single leading token, but multi-word names can miss exact local matches because the same full string cannot start with every token at once. Queries like `Mr Mime`, `Pikachu ex`, or a multi-word name plus number can fall through to closest-match behavior.
 
 The same path also loads up to 250 local rows and then paginates in memory (`src/lib/catalog/data.ts:286`, `src/lib/catalog/data.ts:102-119`). That makes broad result counts and infinite-scroll depth cap out at the first 250 matches even if the database has more.
@@ -147,8 +151,9 @@ Recommended additions:
 ## Suggested Next Pass
 
 1. Update stale README/homepage/empty-state copy so the product matches the current build.
-2. Consolidate `getCurrentCollection()` into one joined/nested read and add collection filters.
-3. Add an `updated_at` trigger migration.
-4. Add Playwright smoke coverage for the core user journey.
-5. Design the price refresh job and then wire `current_prices`/`price_points`.
-6. Revisit eBay listing cards after developer approval and keep outbound search links as fallback.
+2. Upgrade local closest-match search to use Postgres trigram similarity and add fuzzy-search regression checks.
+3. Consolidate `getCurrentCollection()` into one joined/nested read and add collection filters.
+4. Add an `updated_at` trigger migration.
+5. Add Playwright smoke coverage for the core user journey.
+6. Design the price refresh job and then wire `current_prices`/`price_points`.
+7. Revisit eBay listing cards after developer approval and keep outbound search links as fallback.
