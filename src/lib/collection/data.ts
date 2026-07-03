@@ -19,6 +19,29 @@ type SetProgressRow = {
   } | null;
 };
 
+type CollectionRow = {
+  id: string;
+  card_variant_id: string;
+  quantity: number;
+  created_at: string;
+  updated_at: string;
+  card_variants: {
+    id: string;
+    printing: string;
+    condition: string;
+    cards: {
+      provider_id: string;
+      name: string;
+      number: string;
+      image_small_url: string | null;
+      provider_data: Record<string, unknown> | null;
+      card_sets: {
+        name: string;
+      } | null;
+    } | null;
+  } | null;
+};
+
 export async function getCurrentSetCollectionProgress(): Promise<Map<string, number> | null> {
   const user = await getCurrentUser();
   if (!user) return null;
@@ -38,6 +61,7 @@ export async function getCurrentSetCollectionProgress(): Promise<Map<string, num
         )
       `,
     )
+    .eq("user_id", user.id)
     .returns<SetProgressRow[]>();
 
   if (error) {
@@ -75,8 +99,33 @@ export async function getCurrentCollection(): Promise<CollectionSummaryDto | nul
   const supabase = await createClient();
   const { data, error } = await supabase
     .from("collection_items")
-    .select("id, card_variant_id, quantity, created_at, updated_at")
-    .order("created_at", { ascending: false });
+    .select(
+      `
+        id,
+        card_variant_id,
+        quantity,
+        created_at,
+        updated_at,
+        card_variants (
+          id,
+          printing,
+          condition,
+          cards (
+            provider_id,
+            name,
+            number,
+            image_small_url,
+            provider_data,
+            card_sets (
+              name
+            )
+          )
+        )
+      `,
+    )
+    .eq("user_id", user.id)
+    .order("created_at", { ascending: false })
+    .returns<CollectionRow[]>();
 
   if (error) {
     console.error("Failed to load collection", { code: error.code });
@@ -94,45 +143,10 @@ export async function getCurrentCollection(): Promise<CollectionSummaryDto | nul
     };
   }
 
-  const { data: variants, error: variantsError } = await supabase
-    .from("card_variants")
-    .select("id, card_id, printing, condition")
-    .in("id", data.map((item) => item.card_variant_id));
-
-  if (variantsError) {
-    console.error("Failed to load collection variants", { code: variantsError.code });
-    throw new Error("Unable to load the collection.");
-  }
-
-  const { data: cards, error: cardsError } = await supabase
-    .from("cards")
-    .select("id, provider_id, set_id, name, number, image_small_url, provider_data")
-    .in("id", variants.map((variant) => variant.card_id));
-
-  if (cardsError) {
-    console.error("Failed to load collection cards", { code: cardsError.code });
-    throw new Error("Unable to load the collection.");
-  }
-
-  const { data: sets, error: setsError } = await supabase
-    .from("card_sets")
-    .select("id, name")
-    .in("id", cards.map((card) => card.set_id));
-
-  if (setsError) {
-    console.error("Failed to load collection sets", { code: setsError.code });
-    throw new Error("Unable to load the collection.");
-  }
-
-  const variantsById = new Map(variants.map((variant) => [variant.id, variant]));
-  const cardsById = new Map(cards.map((card) => [card.id, card]));
-  const setsById = new Map(sets.map((set) => [set.id, set]));
-
   const items = data.flatMap((item) => {
-    const variant = variantsById.get(item.card_variant_id);
-    const card = variant ? cardsById.get(variant.card_id) : null;
-    const set = card ? setsById.get(card.set_id) : null;
-
+    const variant = item.card_variants;
+    const card = variant?.cards;
+    const set = card?.card_sets;
     if (!variant || !card || !set) return [];
 
     const providerCard = card.provider_data as unknown as PokemonTcgCard | null;

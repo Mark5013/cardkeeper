@@ -61,6 +61,20 @@ Recommended direction:
 
 ### 2. Consolidate collection reads before collections grow
 
+Status: Partially implemented on July 3, 2026.
+
+Implemented:
+
+- `getCurrentCollection()` now uses one nested Supabase select for collection items, variants, cards, and sets instead of four dependent reads.
+- Collection reads now include an explicit `user_id` filter in addition to the existing RLS boundary.
+- The collection DTO and UI behavior are unchanged.
+
+Still pending:
+
+- Add collection filters by card name, set, finish, condition, and unpriced status.
+- Add server-side pagination before very large collections become common.
+- Move collection valuation to `current_prices` after the price refresh design is implemented.
+
 `getCurrentCollection()` fetches collection rows, variants, cards, and sets through multiple dependent Supabase queries (`src/lib/collection/data.ts:71-120`). That is fine for small data, but it will become a noticeable latency source as collections grow. The July 2 work already improved set progress with one nested select (`src/lib/collection/data.ts:22-55`); the main collection view would benefit from the same treatment.
 
 Recommended direction:
@@ -155,7 +169,7 @@ Recommended additions:
 ## Suggested Next Pass
 
 1. Upgrade local closest-match search to use Postgres trigram similarity and add fuzzy-search regression checks.
-2. Consolidate `getCurrentCollection()` into one joined/nested read and add collection filters.
+2. Add collection filters and server-side pagination for larger binders.
 3. Add an `updated_at` trigger migration.
 4. Add Playwright smoke coverage for the core user journey.
 5. Design the price refresh job and then wire `current_prices`/`price_points`.
