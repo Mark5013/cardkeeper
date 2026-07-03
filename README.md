@@ -1,16 +1,17 @@
 # Cardkeeper
 
-Cardkeeper is a Pokemon card collection manager built with Next.js, TypeScript, PostgreSQL, and Drizzle. The initial catalog is English-only and sourced from the Pokemon TCG API, while the schema keeps card language explicit for future catalogs.
+Cardkeeper is a Pokemon card collection manager built with Next.js, TypeScript, PostgreSQL, Supabase, and Drizzle. The local catalog is English-only and imported from the Pokemon TCG API, while the schema keeps card language explicit for future catalogs.
 
 ## What works
 
 - Responsive project landing page
-- Server-only Pokemon TCG API integration
+- Server-only Pokemon TCG API integration for catalog imports and fallback reads
+- Local PostgreSQL-backed card and set browsing
 - Single-field card search supporting queries such as `Pikachu 58`
 - Debounced card suggestions with keyboard navigation
 - Exact-match detection and ranked closest-match fallbacks
 - Dedicated search-results pages for ambiguous and closest matches
-- Broad submitted-search results with shareable URL pagination
+- Broad submitted-search results with infinite scroll and shareable URLs
 - Clickable card results and full card-detail pages
 - Card images and current starting TCGplayer market prices
 - Collection, variant, and historical pricing database schema
@@ -23,15 +24,17 @@ Cardkeeper is a Pokemon card collection manager built with Next.js, TypeScript, 
 - On-demand card catalog synchronization when a user adds a card
 - Finish, condition, and quantity controls on card detail pages
 - Visual owned-card collection grid with quantities, variants, and estimated values
+- Collection sorting by added date and estimated price
+- Set browsing with signed-in collection progress
 
-The hosted database schema and Row Level Security policies are applied. Authentication and collection persistence in the interface are the next implementation milestone.
+The hosted database schema and Row Level Security policies are applied. Authentication, private collection persistence, local catalog search, and set browsing are connected in the interface.
 
 ## Local setup
 
 Requirements:
 
 - Node.js 24 or newer
-- A Pokemon TCG API key (recommended, but search works at lower limits without one)
+- A Pokemon TCG API key for catalog import or provider fallback reads
 - A PostgreSQL database when enabling persistence
 
 Install and configure:
@@ -91,8 +94,11 @@ npm run catalog:import -- --cards-only --cards-by-set --missing-only
 npm run lint
 npm run typecheck
 npm run build
+npm run catalog:test-search
 npm run db:test-rls
 ```
+
+`catalog:test-search` creates temporary catalog fixtures inside a transaction, checks local search behavior, and rolls everything back.
 
 `db:test-rls` creates temporary fixtures inside a transaction, exercises owner, non-owner, and anonymous policies, and rolls everything back.
 

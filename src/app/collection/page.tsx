@@ -54,7 +54,7 @@ export default async function CollectionPage() {
             <p className="text-xs font-semibold uppercase tracking-[0.14em] text-[var(--accent)]">A clean binder</p>
             <h2 className="mt-3 text-2xl font-bold">Your collection is empty</h2>
             <p className="mx-auto mt-3 max-w-md leading-7 text-[var(--muted)]">
-              The private storage boundary is ready. Card condition, finish, and quantity controls are the next collection feature.
+              Search the catalog, open a card, choose its finish and condition, then add the quantity you own.
             </p>
             <Link className="mt-6 inline-flex font-semibold text-[var(--secondary)] hover:underline" href="/">
               Search for your first card →

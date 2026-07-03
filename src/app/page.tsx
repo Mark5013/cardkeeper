@@ -4,18 +4,18 @@ import { SiteHeader } from "@/components/site-header";
 const milestones = [
   {
     label: "Catalog",
-    value: "Pokemon TCG API",
-    detail: "English cards and artwork",
+    value: "Local search",
+    detail: "Imported English catalog",
   },
   {
     label: "Collection",
-    value: "Ready to connect",
-    detail: "Quantity and variant-aware schema",
+    value: "Private binder",
+    detail: "Finish, condition, and quantity",
   },
   {
     label: "Pricing",
-    value: "USD market data",
-    detail: "History will build from snapshots",
+    value: "Market snapshots",
+    detail: "History tables are ready",
   },
 ];
 
@@ -33,7 +33,7 @@ export default function Home() {
             Know every card.<br />Know what it&apos;s worth.
           </h1>
           <p className="mt-7 max-w-2xl text-pretty text-lg leading-8 text-[var(--muted)] sm:text-xl">
-            The first working slice is here: server-side card search backed by the Pokemon TCG API, with a collection-ready database model underneath it.
+            Search the imported Pokemon TCG catalog, open detailed card pages, and keep a private collection with finish, condition, quantity, and estimated value tracking.
           </p>
         </div>
 

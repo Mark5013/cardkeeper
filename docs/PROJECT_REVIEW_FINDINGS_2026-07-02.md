@@ -130,11 +130,15 @@ Recommended improvements:
 
 Recommended improvements:
 
-- Update stale product copy. The homepage still describes the collection as "Ready to connect" and says search is backed by the Pokemon TCG API (`src/app/page.tsx:7-36`), while the app now has local catalog search and connected collection persistence. The README also says auth and collection persistence are the next milestone (`README.md:27`), which is no longer true.
+- Implemented: update stale product copy. The homepage previously described the collection as "Ready to connect" and said search was backed by the Pokemon TCG API (`src/app/page.tsx:7-36`), while the app now has local catalog search and connected collection persistence. The README also said auth and collection persistence were the next milestone (`README.md:27`), which is no longer true.
 - Add a "Load more" fallback to infinite scroll and preserve search scroll/results state when returning from a card page. The July 2 handoff already notes the scroll restoration limitation.
 - Add collection filters by card name, set, finish, condition, and unpriced status.
 - Consider grouping variants of the same card in collection views once users can own several finishes/conditions.
 - Revisit empty collection copy in `src/app/collection/page.tsx`; it still says controls are the next feature even though controls exist.
+
+Status:
+
+- Implemented stale-copy cleanup on July 3, 2026. Updated homepage milestone/intro copy, empty collection guidance, and README feature/setup/check descriptions to match local catalog search, connected collection persistence, infinite scroll, set browsing, and the catalog search regression script.
 
 ## Testing And Observability
 
@@ -150,10 +154,9 @@ Recommended additions:
 
 ## Suggested Next Pass
 
-1. Update stale README/homepage/empty-state copy so the product matches the current build.
-2. Upgrade local closest-match search to use Postgres trigram similarity and add fuzzy-search regression checks.
-3. Consolidate `getCurrentCollection()` into one joined/nested read and add collection filters.
-4. Add an `updated_at` trigger migration.
-5. Add Playwright smoke coverage for the core user journey.
-6. Design the price refresh job and then wire `current_prices`/`price_points`.
-7. Revisit eBay listing cards after developer approval and keep outbound search links as fallback.
+1. Upgrade local closest-match search to use Postgres trigram similarity and add fuzzy-search regression checks.
+2. Consolidate `getCurrentCollection()` into one joined/nested read and add collection filters.
+3. Add an `updated_at` trigger migration.
+4. Add Playwright smoke coverage for the core user journey.
+5. Design the price refresh job and then wire `current_prices`/`price_points`.
+6. Revisit eBay listing cards after developer approval and keep outbound search links as fallback.
