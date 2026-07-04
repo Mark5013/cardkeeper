@@ -163,5 +163,6 @@ export type SetCardsPayload = {
   totalCount: number;
   page: number;
   pageSize: number;
+  sort?: "number-asc" | "price-desc" | "price-asc";
   totalPages: number;
 };

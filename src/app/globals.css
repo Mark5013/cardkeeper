@@ -499,6 +499,32 @@ select {
   color: var(--secondary);
 }
 
+.catalog-sort-control {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.6rem;
+  color: var(--muted);
+  font-size: 0.875rem;
+  font-weight: 750;
+}
+
+.catalog-sort-control select {
+  min-height: 2.75rem;
+  border: 1px solid var(--line);
+  border-radius: 0.75rem;
+  background: var(--surface-2);
+  padding: 0.65rem 2rem 0.65rem 0.85rem;
+  color: var(--ink);
+  font: inherit;
+  cursor: pointer;
+}
+
+.catalog-sort-control select:hover,
+.catalog-sort-control select:focus-visible {
+  border-color: var(--secondary);
+  outline: none;
+}
+
 @media (min-width: 768px) {
   .collection-filter-grid {
     grid-template-columns: minmax(14rem, 1.2fr) minmax(12rem, 0.8fr) auto;

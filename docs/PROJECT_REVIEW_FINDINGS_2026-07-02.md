@@ -116,6 +116,7 @@ Implemented:
 - Split EX Trainer Kit TCGCSV groups now map to multiple local sets using stricter card name plus number matching so shared card numbers do not attach prices to the wrong half-deck.
 - Current zero-price set-level gaps after reconciliation are `fut20` Pokemon Futsal Collection and `mcd21` McDonald's Collection 2021. TCGCSV did not expose an obvious Futsal group, and the 2021 McDonald's set was not mapped because TCGCSV does not list a 2021 McDonald's promo group.
 - Card detail pages now tolerate provider payloads where `cardmarket` exists but nested `prices` is absent.
+- Set detail pages now support DB-backed card sorting by current market price, with unpriced cards sorted after priced cards. Global search-result sorting is still intentionally paused.
 
 Operational notes:
 

@@ -1,24 +1,42 @@
 "use client";
 
+import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 
 import { CardResultGrid } from "@/components/card-result-grid";
+import { getSetCardSortLabel, SET_CARD_SORT_OPTIONS, type SetCardSort } from "@/lib/catalog/set-card-sort";
 import type { CardSearchResult, SetCardsPayload } from "@/lib/pokemon-tcg/types";
 
 type SetCardsResponse = Partial<SetCardsPayload> & { error?: string };
 
-function mergeAndSortCards(currentCards: CardSearchResult[], nextCards: CardSearchResult[]) {
+function sortCardsForDisplay(cards: CardSearchResult[], sort: SetCardSort) {
+  return [...cards].sort((left, right) => {
+    if (sort === "price-desc" || sort === "price-asc") {
+      const leftPrice = left.startingPriceUsd;
+      const rightPrice = right.startingPriceUsd;
+
+      if (leftPrice !== null && rightPrice === null) return -1;
+      if (leftPrice === null && rightPrice !== null) return 1;
+      if (leftPrice !== null && rightPrice !== null && leftPrice !== rightPrice) {
+        return sort === "price-desc" ? rightPrice - leftPrice : leftPrice - rightPrice;
+      }
+    }
+
+    return (
+      left.number.localeCompare(right.number, "en", { numeric: true }) ||
+      left.name.localeCompare(right.name, "en", { sensitivity: "base" })
+    );
+  });
+}
+
+function mergeAndSortCards(currentCards: CardSearchResult[], nextCards: CardSearchResult[], sort: SetCardSort) {
   const cardsById = new Map(currentCards.map((card) => [card.id, card]));
 
   for (const card of nextCards) {
     cardsById.set(card.id, card);
   }
 
-  return Array.from(cardsById.values()).sort(
-    (left, right) =>
-      left.number.localeCompare(right.number, "en", { numeric: true }) ||
-      left.name.localeCompare(right.name, "en", { sensitivity: "base" }),
-  );
+  return sortCardsForDisplay(Array.from(cardsById.values()), sort);
 }
 
 export function SetCardsBrowser({
@@ -30,10 +48,12 @@ export function SetCardsBrowser({
 }) {
   const [cards, setCards] = useState(initialResult.cards);
   const [page, setPage] = useState(initialResult.page);
+  const [sort, setSort] = useState<SetCardSort>(initialResult.sort ?? "number-asc");
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const sentinelRef = useRef<HTMLDivElement>(null);
   const isLoadingRef = useRef(false);
+  const router = useRouter();
   const hasMoreCards = page < initialResult.totalPages && cards.length < initialResult.totalCount;
 
   useEffect(() => {
@@ -53,6 +73,7 @@ export function SetCardsBrowser({
         const params = new URLSearchParams({
           page: String(nextPage),
           pageSize: String(initialResult.pageSize),
+          sort,
         });
 
         fetch(`/api/sets/${encodeURIComponent(setId)}/cards?${params}`, {
@@ -64,7 +85,7 @@ export function SetCardsBrowser({
             return payload as SetCardsPayload;
           })
           .then((payload) => {
-            setCards((currentCards) => mergeAndSortCards(currentCards, payload.cards));
+            setCards((currentCards) => mergeAndSortCards(currentCards, payload.cards, sort));
             setPage(payload.page);
           })
           .catch((loadError) => {
@@ -86,7 +107,18 @@ export function SetCardsBrowser({
       controller.abort();
       observer.disconnect();
     };
-  }, [hasMoreCards, initialResult.pageSize, page, setId]);
+  }, [hasMoreCards, initialResult.pageSize, page, setId, sort]);
+
+  function updateSort(nextSort: SetCardSort) {
+    setSort(nextSort);
+    setPage(initialResult.page);
+    setCards(sortCardsForDisplay(initialResult.cards, nextSort));
+    setError(null);
+
+    const params = new URLSearchParams();
+    if (nextSort !== "number-asc") params.set("sort", nextSort);
+    router.replace(`/sets/${encodeURIComponent(setId)}${params.size > 0 ? `?${params}` : ""}`, { scroll: false });
+  }
 
   return (
     <div className="mt-10">
@@ -104,9 +136,19 @@ export function SetCardsBrowser({
             </p>
           ) : null}
         </div>
-        <p className="max-w-md text-sm text-[var(--muted)]">
-          Cards are sorted by printed card number.
-        </p>
+        <label className="catalog-sort-control">
+          <span>Sort</span>
+          <select
+            value={sort}
+            onChange={(event) => updateSort(event.currentTarget.value as SetCardSort)}
+          >
+            {SET_CARD_SORT_OPTIONS.map((option) => (
+              <option key={option.value} value={option.value}>
+                {option.label}
+              </option>
+            ))}
+          </select>
+        </label>
       </div>
 
       <CardResultGrid cards={cards} />
@@ -124,7 +166,7 @@ export function SetCardsBrowser({
       ) : null}
       {!isLoading && !hasMoreCards ? (
         <p className="mt-6 text-center text-sm text-[var(--muted)]">
-          All cards in this set are loaded.
+          All cards in this set are loaded by {getSetCardSortLabel(sort).toLowerCase()}.
         </p>
       ) : null}
     </div>

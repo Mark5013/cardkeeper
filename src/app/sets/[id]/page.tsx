@@ -7,6 +7,7 @@ import { connection } from "next/server";
 import { SetCardsBrowser } from "@/components/set-cards-browser";
 import { SiteHeader } from "@/components/site-header";
 import { getCatalogPokemonCardsBySet, getCatalogPokemonSet } from "@/lib/catalog/data";
+import { normalizeSetCardSort } from "@/lib/catalog/set-card-sort";
 
 export async function generateMetadata({
   params,
@@ -24,10 +25,21 @@ export async function generateMetadata({
   };
 }
 
-export default async function SetDetailPage({ params }: { params: Promise<{ id: string }> }) {
+export default async function SetDetailPage({
+  params,
+  searchParams,
+}: {
+  params: Promise<{ id: string }>;
+  searchParams: Promise<{ sort?: string | string[] }>;
+}) {
   await connection();
 
   const { id } = await params;
+  const resolvedSearchParams = await searchParams;
+  const rawSort = Array.isArray(resolvedSearchParams.sort)
+    ? resolvedSearchParams.sort[0]
+    : resolvedSearchParams.sort;
+  const sort = normalizeSetCardSort(rawSort);
   const set = await getCatalogPokemonSet(id);
 
   if (!set) notFound();
@@ -36,7 +48,7 @@ export default async function SetDetailPage({ params }: { params: Promise<{ id: 
   let unavailable = false;
 
   try {
-    cards = await getCatalogPokemonCardsBySet(set);
+    cards = await getCatalogPokemonCardsBySet(set, sort);
   } catch (error) {
     console.error("Set cards page failed", { setId: id, error });
     unavailable = true;
@@ -73,7 +85,7 @@ export default async function SetDetailPage({ params }: { params: Promise<{ id: 
           </div>
         ) : null}
 
-        {cards ? <SetCardsBrowser key={set.id} setId={set.id} initialResult={cards} /> : null}
+        {cards ? <SetCardsBrowser key={`${set.id}:${sort}`} setId={set.id} initialResult={cards} /> : null}
       </section>
     </main>
   );

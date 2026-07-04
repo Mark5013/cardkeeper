@@ -2,10 +2,12 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 
 import { getCatalogPokemonCardsBySetPage } from "@/lib/catalog/data";
+import { normalizeSetCardSort } from "@/lib/catalog/set-card-sort";
 
 const setCardsSchema = z.object({
   page: z.coerce.number().int().min(1).max(1000).default(1),
   pageSize: z.coerce.number().int().min(1).max(1000).default(250),
+  sort: z.string().optional(),
 });
 
 type RouteContext = { params: Promise<{ id: string }> };
@@ -28,6 +30,7 @@ export async function GET(request: Request, context: RouteContext) {
         setId: id,
         page: parsed.data.page,
         pageSize: parsed.data.pageSize,
+        sort: normalizeSetCardSort(parsed.data.sort),
       }),
     );
   } catch (error) {

@@ -1,7 +1,7 @@
 import "server-only";
 
 import { cache } from "react";
-import { and, asc, eq, inArray, sql } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, sql } from "drizzle-orm";
 
 import { db } from "@/db";
 import { cards, cardSets, cardVariants, currentPrices, pricePoints } from "@/db/schema";
@@ -23,6 +23,7 @@ import type {
   SetCardsPayload,
 } from "@/lib/pokemon-tcg/types";
 import { formatPrinting } from "@/lib/pokemon-tcg/printing";
+import type { SetCardSort } from "@/lib/catalog/set-card-sort";
 
 export type CardPriceHistoryPoint = {
   observedAt: string;
@@ -298,6 +299,26 @@ async function getCurrentMarketPricesByCardId(cardIds: string[]) {
   return pricesByCardId;
 }
 
+function currentMarketPriceByCardSubquery() {
+  return db
+    .select({
+      cardId: cardVariants.cardId,
+      amountMinor: sql<number>`min(${currentPrices.amountMinor})`.as("amount_minor"),
+    })
+    .from(currentPrices)
+    .innerJoin(cardVariants, eq(currentPrices.cardVariantId, cardVariants.id))
+    .where(
+      and(
+        eq(currentPrices.source, "tcgcsv"),
+        eq(currentPrices.priceType, "market"),
+        eq(currentPrices.currency, "USD"),
+        eq(cardVariants.languageCode, "en"),
+      ),
+    )
+    .groupBy(cardVariants.cardId)
+    .as("current_market_price_by_card");
+}
+
 async function getCurrentPricesForCardId(cardId: string) {
   const pricesByPrinting = new Map<
     string,
@@ -386,13 +407,32 @@ export const getCatalogPokemonCardsBySetPage = cache(async (input: {
   setId: string;
   page?: number;
   pageSize?: number;
+  sort?: SetCardSort;
 }): Promise<SetCardsPayload> => {
   const page = input.page ?? 1;
   const pageSize = input.pageSize ?? 250;
+  const sort = input.sort ?? "number-asc";
   const offset = (page - 1) * pageSize;
 
   try {
     const whereSet = and(eq(cardSets.providerId, input.setId), eq(cards.languageCode, "en"));
+    const currentMarketPriceByCard = currentMarketPriceByCardSubquery();
+    const numberSort = sql`case when ${cards.number} ~ '^[0-9]+' then substring(${cards.number} from '^[0-9]+')::integer else null end asc nulls last`;
+    const tieBreakSort = [numberSort, asc(cards.number), asc(cards.name), asc(cards.providerId)];
+    const orderBy =
+      sort === "price-desc"
+        ? [
+            sql`case when ${currentMarketPriceByCard.amountMinor} is null then 1 else 0 end`,
+            desc(currentMarketPriceByCard.amountMinor),
+            ...tieBreakSort,
+          ]
+        : sort === "price-asc"
+          ? [
+              sql`case when ${currentMarketPriceByCard.amountMinor} is null then 1 else 0 end`,
+              asc(currentMarketPriceByCard.amountMinor),
+              ...tieBreakSort,
+            ]
+          : tieBreakSort;
     const [totalRow] = await db
       .select({ count: sql<number>`count(*)::integer` })
       .from(cards)
@@ -406,13 +446,9 @@ export const getCatalogPokemonCardsBySetPage = cache(async (input: {
         .select({ card: cards, set: cardSets })
         .from(cards)
         .innerJoin(cardSets, eq(cards.setId, cardSets.id))
+        .leftJoin(currentMarketPriceByCard, eq(currentMarketPriceByCard.cardId, cards.id))
         .where(whereSet)
-        .orderBy(
-          sql`case when ${cards.number} ~ '^[0-9]+' then substring(${cards.number} from '^[0-9]+')::integer else null end asc nulls last`,
-          asc(cards.number),
-          asc(cards.name),
-          asc(cards.providerId),
-        )
+        .orderBy(...orderBy)
         .limit(pageSize)
         .offset(offset);
 
@@ -421,6 +457,7 @@ export const getCatalogPokemonCardsBySetPage = cache(async (input: {
         totalCount,
         page,
         pageSize,
+        sort,
         totalPages: Math.ceil(totalCount / pageSize),
       };
     }
@@ -436,11 +473,13 @@ export const getCatalogPokemonCardsBySetPage = cache(async (input: {
 
 export const getCatalogPokemonCardsBySet = cache(async (
   set: PokemonTcgSet,
+  sort: SetCardSort = "number-asc",
 ): Promise<SetCardsPayload> => {
   return getCatalogPokemonCardsBySetPage({
     setId: set.id,
     page: 1,
     pageSize: Math.max(set.total, 1),
+    sort,
   });
 });
 
