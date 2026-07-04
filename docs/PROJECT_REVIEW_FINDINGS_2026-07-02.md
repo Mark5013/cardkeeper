@@ -119,6 +119,7 @@ Implemented:
 - Set detail pages and global search results now support DB-backed card sorting by current market price, with unpriced cards sorted after priced cards.
 - Search, set, and collection dropdown menus now use Radix UI primitives for accessible select/dropdown behavior while keeping Cardkeeper's existing visual styling.
 - Set detail sort changes now update the URL with `window.history.replaceState` instead of triggering a Next route navigation, avoiding duplicate set-page reloads and dropdown remounts after quick sort changes.
+- Search result sort changes now refresh the card grid through the cards API and update the URL with `window.history.replaceState`, keeping the result heading/count and sort dropdown mounted while sorted cards load. The redundant "Showing x of x" line was removed from search results.
 
 Operational notes:
 

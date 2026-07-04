@@ -1,7 +1,6 @@
 "use client";
 
 import Link from "next/link";
-import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 
 import { CardResultGrid } from "@/components/card-result-grid";
@@ -20,6 +19,32 @@ function mergeUniqueCards(currentCards: CardSearchResult[], nextCards: CardSearc
   return [...currentCards, ...nextCards.filter((card) => !seen.has(card.id))];
 }
 
+function LoadingCard() {
+  return (
+    <div className="overflow-hidden rounded-lg border border-[var(--line)] bg-[var(--surface)]">
+      <div className="grid grid-cols-[7rem_minmax(0,1fr)] gap-5 p-5">
+        <div className="aspect-[245/342] rounded-md bg-[var(--surface-2)]" />
+        <div className="self-center">
+          <div className="h-3 w-24 rounded-full bg-[var(--surface-2)]" />
+          <div className="mt-4 h-5 w-36 rounded-full bg-[var(--surface-2)]" />
+          <div className="mt-4 h-3 w-28 rounded-full bg-[var(--surface-2)]" />
+          <div className="mt-5 h-4 w-20 rounded-full bg-[var(--surface-2)]" />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function LoadingCardGrid() {
+  return (
+    <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3" aria-live="polite" aria-label="Loading sorted cards">
+      {Array.from({ length: 6 }, (_, index) => (
+        <LoadingCard key={index} />
+      ))}
+    </div>
+  );
+}
+
 export function SearchResultsBrowser({
   query,
   initialResult,
@@ -29,16 +54,26 @@ export function SearchResultsBrowser({
 }) {
   const [cards, setCards] = useState(initialResult.cards);
   const [page, setPage] = useState(initialResult.page);
+  const [totalCount, setTotalCount] = useState(initialResult.totalCount);
+  const [totalPages, setTotalPages] = useState(initialResult.totalPages);
+  const [matchType, setMatchType] = useState(initialResult.matchType);
+  const [sort, setSort] = useState<SearchCardSort>(initialResult.sort ?? "relevance");
   const [isLoading, setIsLoading] = useState(false);
+  const [isRefreshing, setIsRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const sentinelRef = useRef<HTMLDivElement>(null);
   const isLoadingRef = useRef(false);
-  const router = useRouter();
-  const sort = initialResult.sort ?? "relevance";
+  const refreshControllerRef = useRef<AbortController | null>(null);
+
+  useEffect(() => {
+    return () => {
+      refreshControllerRef.current?.abort();
+    };
+  }, []);
 
   useEffect(() => {
     const sentinel = sentinelRef.current;
-    if (!sentinel || page >= initialResult.totalPages) return;
+    if (!sentinel || page >= totalPages || isRefreshing) return;
 
     const controller = new AbortController();
     const observer = new IntersectionObserver(
@@ -67,6 +102,9 @@ export function SearchResultsBrowser({
           .then((payload) => {
             setCards((currentCards) => mergeUniqueCards(currentCards, payload.cards));
             setPage(payload.page);
+            setTotalCount(payload.totalCount);
+            setTotalPages(payload.totalPages);
+            setMatchType(payload.matchType);
           })
           .catch((loadError) => {
             if (!(loadError instanceof DOMException && loadError.name === "AbortError")) {
@@ -87,12 +125,54 @@ export function SearchResultsBrowser({
       controller.abort();
       observer.disconnect();
     };
-  }, [initialResult.pageSize, initialResult.totalPages, page, query, sort]);
+  }, [initialResult.pageSize, isRefreshing, page, query, sort, totalPages]);
 
-  function updateSort(nextSort: SearchCardSort) {
+  async function updateSort(nextSort: SearchCardSort) {
+    if (nextSort === sort) return;
+
+    refreshControllerRef.current?.abort();
+    const controller = new AbortController();
+    refreshControllerRef.current = controller;
+
+    setSort(nextSort);
+    setIsRefreshing(true);
+    setIsLoading(false);
+    isLoadingRef.current = false;
+    setError(null);
+
     const params = new URLSearchParams({ query });
     if (nextSort !== "relevance") params.set("sort", nextSort);
-    router.replace(`/search?${params}`, { scroll: false });
+    window.history.replaceState(null, "", `/search?${params}`);
+
+    const requestParams = new URLSearchParams({
+      query,
+      mode: "search",
+      page: "1",
+      pageSize: String(initialResult.pageSize),
+      sort: nextSort,
+    });
+
+    try {
+      const response = await fetch(`/api/cards/search?${requestParams}`, { signal: controller.signal });
+      const payload = (await response.json()) as SearchResponse;
+      if (!response.ok) throw new Error(payload.error ?? "Unable to sort cards.");
+
+      const result = payload as CardSearchPayload;
+      setCards(result.cards);
+      setPage(result.page);
+      setTotalCount(result.totalCount);
+      setTotalPages(result.totalPages);
+      setMatchType(result.matchType);
+    } catch (sortError) {
+      if (!(sortError instanceof DOMException && sortError.name === "AbortError")) {
+        setError(sortError instanceof Error ? sortError.message : "Unable to sort cards.");
+      }
+    } finally {
+      if (refreshControllerRef.current === controller) {
+        refreshControllerRef.current = null;
+        setIsRefreshing(false);
+      }
+    }
   }
 
   return (
@@ -100,23 +180,16 @@ export function SearchResultsBrowser({
       <div className="mb-6 flex flex-wrap items-end justify-between gap-3">
         <div>
           <p className="text-sm font-semibold text-[var(--accent)]">
-            {initialResult.matchType === "closest" ? "Closest matches" : "Catalog matches"}
+            {matchType === "closest" ? "Closest matches" : "Catalog matches"}
           </p>
           <h2 className="mt-1 text-2xl font-bold">
-            {initialResult.totalCount === 0
+            {totalCount === 0
               ? "No cards found"
-              : `${initialResult.totalCount.toLocaleString()} ${
-                  initialResult.totalCount === 1 ? "card" : "cards"
-                }`}
+              : `${totalCount.toLocaleString()} ${totalCount === 1 ? "card" : "cards"}`}
           </h2>
-          {cards.length > 0 ? (
-            <p className="mt-1 text-sm text-[var(--muted)]">
-              Showing {cards.length.toLocaleString()} of {initialResult.totalCount.toLocaleString()}
-            </p>
-          ) : null}
         </div>
         <div className="flex flex-col gap-3 sm:items-end">
-          {initialResult.matchType === "closest" && cards.length > 0 ? (
+          {matchType === "closest" && cards.length > 0 ? (
             <p className="max-w-md text-sm text-[var(--muted)] sm:text-right">
               We couldn&apos;t find an exact name and number, so best-match results are ranked by similarity.
             </p>
@@ -134,7 +207,7 @@ export function SearchResultsBrowser({
 
       {cards.length > 0 ? (
         <>
-          <CardResultGrid cards={cards} />
+          {isRefreshing ? <LoadingCardGrid /> : <CardResultGrid cards={cards} />}
           <div ref={sentinelRef} className="h-12" aria-hidden="true" />
           {isLoading ? (
             <div className="mt-6 flex items-center justify-center gap-3 text-sm font-semibold text-[var(--muted)]" aria-live="polite">
@@ -147,7 +220,7 @@ export function SearchResultsBrowser({
               {error}
             </p>
           ) : null}
-          {!isLoading && page >= initialResult.totalPages ? (
+          {!isLoading && !isRefreshing && page >= totalPages ? (
             <p className="mt-6 text-center text-sm text-[var(--muted)]">
               All matching cards are loaded by {getSearchCardSortLabel(sort).toLowerCase()}.
             </p>
