@@ -1,9 +1,9 @@
 "use client";
 
-import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 
 import { CardResultGrid } from "@/components/card-result-grid";
+import { SortSelect } from "@/components/ui/sort-select";
 import { getSetCardSortLabel, SET_CARD_SORT_OPTIONS, type SetCardSort } from "@/lib/catalog/set-card-sort";
 import type { CardSearchResult, SetCardsPayload } from "@/lib/pokemon-tcg/types";
 
@@ -53,7 +53,6 @@ export function SetCardsBrowser({
   const [error, setError] = useState<string | null>(null);
   const sentinelRef = useRef<HTMLDivElement>(null);
   const isLoadingRef = useRef(false);
-  const router = useRouter();
   const hasMoreCards = page < initialResult.totalPages && cards.length < initialResult.totalCount;
 
   useEffect(() => {
@@ -115,9 +114,13 @@ export function SetCardsBrowser({
     setCards(sortCardsForDisplay(initialResult.cards, nextSort));
     setError(null);
 
-    const params = new URLSearchParams();
-    if (nextSort !== "number-asc") params.set("sort", nextSort);
-    router.replace(`/sets/${encodeURIComponent(setId)}${params.size > 0 ? `?${params}` : ""}`, { scroll: false });
+    const url = new URL(window.location.href);
+    if (nextSort === "number-asc") {
+      url.searchParams.delete("sort");
+    } else {
+      url.searchParams.set("sort", nextSort);
+    }
+    window.history.replaceState(null, "", `${url.pathname}${url.search}`);
   }
 
   return (
@@ -136,19 +139,12 @@ export function SetCardsBrowser({
             </p>
           ) : null}
         </div>
-        <label className="catalog-sort-control">
-          <span>Sort</span>
-          <select
-            value={sort}
-            onChange={(event) => updateSort(event.currentTarget.value as SetCardSort)}
-          >
-            {SET_CARD_SORT_OPTIONS.map((option) => (
-              <option key={option.value} value={option.value}>
-                {option.label}
-              </option>
-            ))}
-          </select>
-        </label>
+        <SortSelect
+          label="Sort"
+          options={SET_CARD_SORT_OPTIONS}
+          value={sort}
+          onValueChange={updateSort}
+        />
       </div>
 
       <CardResultGrid cards={cards} />

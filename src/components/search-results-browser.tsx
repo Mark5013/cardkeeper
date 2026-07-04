@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 
 import { CardResultGrid } from "@/components/card-result-grid";
+import { SortSelect } from "@/components/ui/sort-select";
 import {
   getSearchCardSortLabel,
   SEARCH_CARD_SORT_OPTIONS,
@@ -121,19 +122,12 @@ export function SearchResultsBrowser({
             </p>
           ) : null}
           {cards.length > 0 ? (
-            <label className="catalog-sort-control">
-              <span>Sort</span>
-              <select
-                value={sort}
-                onChange={(event) => updateSort(event.currentTarget.value as SearchCardSort)}
-              >
-                {SEARCH_CARD_SORT_OPTIONS.map((option) => (
-                  <option key={option.value} value={option.value}>
-                    {option.label}
-                  </option>
-                ))}
-              </select>
-            </label>
+            <SortSelect
+              label="Sort"
+              options={SEARCH_CARD_SORT_OPTIONS}
+              value={sort}
+              onValueChange={updateSort}
+            />
           ) : null}
         </div>
       </div>

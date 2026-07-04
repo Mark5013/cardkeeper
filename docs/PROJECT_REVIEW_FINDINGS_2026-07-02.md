@@ -117,6 +117,8 @@ Implemented:
 - Current zero-price set-level gaps after reconciliation are `fut20` Pokemon Futsal Collection and `mcd21` McDonald's Collection 2021. TCGCSV did not expose an obvious Futsal group, and the 2021 McDonald's set was not mapped because TCGCSV does not list a 2021 McDonald's promo group.
 - Card detail pages now tolerate provider payloads where `cardmarket` exists but nested `prices` is absent.
 - Set detail pages and global search results now support DB-backed card sorting by current market price, with unpriced cards sorted after priced cards.
+- Search, set, and collection dropdown menus now use Radix UI primitives for accessible select/dropdown behavior while keeping Cardkeeper's existing visual styling.
+- Set detail sort changes now update the URL with `window.history.replaceState` instead of triggering a Next route navigation, avoiding duplicate set-page reloads and dropdown remounts after quick sort changes.
 
 Operational notes:
 

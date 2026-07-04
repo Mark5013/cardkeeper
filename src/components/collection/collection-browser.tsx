@@ -1,5 +1,6 @@
 "use client";
 
+import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import { CollectionCardGrid } from "@/components/collection/collection-card-grid";
@@ -35,8 +36,6 @@ export function CollectionBrowser({
   const [sort, setSort] = useState<CollectionSortOption>("created-desc");
   const [query, setQuery] = useState("");
   const [selectedSetIds, setSelectedSetIds] = useState<string[]>([]);
-  const [isSortMenuOpen, setIsSortMenuOpen] = useState(false);
-  const [isSetMenuOpen, setIsSetMenuOpen] = useState(false);
   const [loadedPage, setLoadedPage] = useState(initialPage);
   const [visibleTotalItems, setVisibleTotalItems] = useState(totalItems);
   const [hasNextPage, setHasNextPage] = useState(initialHasNextPage);
@@ -111,7 +110,6 @@ export function CollectionBrowser({
   function clearFilters() {
     setQuery("");
     setSelectedSetIds([]);
-    setIsSetMenuOpen(false);
   }
 
   async function loadMore() {
@@ -157,45 +155,30 @@ export function CollectionBrowser({
           <p className="max-w-md text-sm text-[var(--muted)] sm:text-right">
             Values use general finish-level market prices and do not yet adjust for condition. Unpriced variants sort after priced variants when sorting by price.
           </p>
-          <div
-            className="sort-menu-wrap"
-            onBlur={(event) => {
-              if (!(event.relatedTarget instanceof Node) || !event.currentTarget.contains(event.relatedTarget)) {
-                setIsSortMenuOpen(false);
-              }
-            }}
-          >
-            <button
-              type="button"
-              className="sort-menu-button"
-              aria-haspopup="menu"
-              aria-expanded={isSortMenuOpen}
-              onClick={() => setIsSortMenuOpen((current) => !current)}
-            >
+          <DropdownMenu.Root>
+            <DropdownMenu.Trigger className="sort-menu-button" type="button">
               <span>Sort by: {selectedOption.label}</span>
-              <span aria-hidden="true">v</span>
-            </button>
-            {isSortMenuOpen ? (
-              <div className="sort-menu" role="menu">
-                {SORT_OPTIONS.map((option) => (
-                  <button
-                    type="button"
-                    className="sort-menu-option"
-                    data-active={option.value === sort}
-                    role="menuitemradio"
-                    aria-checked={option.value === sort}
-                    key={option.value}
-                    onClick={() => {
-                      setSort(option.value);
-                      setIsSortMenuOpen(false);
-                    }}
-                  >
-                    {option.label}
-                  </button>
-                ))}
-              </div>
-            ) : null}
-          </div>
+              <span className="control-chevron" aria-hidden="true" />
+            </DropdownMenu.Trigger>
+            <DropdownMenu.Portal>
+              <DropdownMenu.Content className="control-menu" align="end" sideOffset={6}>
+                <DropdownMenu.RadioGroup
+                  value={sort}
+                  onValueChange={(value) => setSort(value as CollectionSortOption)}
+                >
+                  {SORT_OPTIONS.map((option) => (
+                    <DropdownMenu.RadioItem
+                      className="control-menu-option"
+                      value={option.value}
+                      key={option.value}
+                    >
+                      {option.label}
+                    </DropdownMenu.RadioItem>
+                  ))}
+                </DropdownMenu.RadioGroup>
+              </DropdownMenu.Content>
+            </DropdownMenu.Portal>
+          </DropdownMenu.Root>
         </div>
       </div>
 
@@ -212,54 +195,41 @@ export function CollectionBrowser({
             />
           </label>
 
-          <div
-            className="sort-menu-wrap"
-            onBlur={(event) => {
-              if (!(event.relatedTarget instanceof Node) || !event.currentTarget.contains(event.relatedTarget)) {
-                setIsSetMenuOpen(false);
-              }
-            }}
-          >
+          <div>
             <span className="auth-label">Set</span>
-            <button
-              type="button"
-              className="sort-menu-button collection-filter-button"
-              aria-haspopup="menu"
-              aria-expanded={isSetMenuOpen}
-              onClick={() => setIsSetMenuOpen((current) => !current)}
-            >
-              <span>{selectedSetIds.length === 0 ? "All sets" : `${selectedSetIds.length} selected`}</span>
-              <span aria-hidden="true">v</span>
-            </button>
-            {isSetMenuOpen ? (
-              <div className="sort-menu collection-set-menu" role="menu">
-                {setOptions.map((set) => {
-                  const isSelected = selectedSetIds.includes(set.id);
+            <DropdownMenu.Root>
+              <DropdownMenu.Trigger className="sort-menu-button collection-filter-button" type="button">
+                <span>{selectedSetIds.length === 0 ? "All sets" : `${selectedSetIds.length} selected`}</span>
+                <span className="control-chevron" aria-hidden="true" />
+              </DropdownMenu.Trigger>
+              <DropdownMenu.Portal>
+                <DropdownMenu.Content className="control-menu collection-set-menu" align="start" sideOffset={6}>
+                  {setOptions.map((set) => {
+                    const isSelected = selectedSetIds.includes(set.id);
 
-                  return (
-                    <button
-                      type="button"
-                      className="sort-menu-option collection-set-option"
-                      data-active={isSelected}
-                      role="menuitemcheckbox"
-                      aria-checked={isSelected}
-                      key={set.id}
-                      onClick={() => toggleSet(set.id)}
-                    >
-                      <input
-                        className="collection-set-checkbox"
-                        type="checkbox"
+                    return (
+                      <DropdownMenu.CheckboxItem
+                        className="control-menu-option collection-set-option"
                         checked={isSelected}
-                        readOnly
-                        tabIndex={-1}
-                        aria-hidden="true"
-                      />
-                      <span>{set.name}</span>
-                    </button>
-                  );
-                })}
-              </div>
-            ) : null}
+                        key={set.id}
+                        onCheckedChange={() => toggleSet(set.id)}
+                        onSelect={(event) => event.preventDefault()}
+                      >
+                        <input
+                          className="collection-set-checkbox"
+                          type="checkbox"
+                          checked={isSelected}
+                          readOnly
+                          tabIndex={-1}
+                          aria-hidden="true"
+                        />
+                        <span>{set.name}</span>
+                      </DropdownMenu.CheckboxItem>
+                    );
+                  })}
+                </DropdownMenu.Content>
+              </DropdownMenu.Portal>
+            </DropdownMenu.Root>
           </div>
 
           <div className="collection-filter-actions">
