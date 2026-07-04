@@ -155,6 +155,7 @@ export type CardSearchPayload = {
   parsedQuery: ParsedCardQuery;
   page: number;
   pageSize: number;
+  sort?: "relevance" | "price-desc" | "price-asc";
   totalPages: number;
 };
 

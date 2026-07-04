@@ -23,6 +23,7 @@ import type {
   SetCardsPayload,
 } from "@/lib/pokemon-tcg/types";
 import { formatPrinting } from "@/lib/pokemon-tcg/printing";
+import type { SearchCardSort } from "@/lib/catalog/search-card-sort";
 import type { SetCardSort } from "@/lib/catalog/set-card-sort";
 
 export type CardPriceHistoryPoint = {
@@ -174,9 +175,31 @@ async function queryLocalSearchPage(input: {
   strategy: "phrase" | "tokens";
   page: number;
   pageSize: number;
+  sort: SearchCardSort;
 }) {
   const whereSearch = localSearchConditions(input);
   const offset = (input.page - 1) * input.pageSize;
+  const currentMarketPriceByCard = currentMarketPriceByCardSubquery();
+  const relevanceOrderBy = [
+    asc(cards.name),
+    getCardNumberOrderSql(),
+    asc(cards.number),
+    asc(cards.providerId),
+  ];
+  const orderBy =
+    input.sort === "price-desc"
+      ? [
+          sql`case when ${currentMarketPriceByCard.amountMinor} is null then 1 else 0 end`,
+          desc(currentMarketPriceByCard.amountMinor),
+          ...relevanceOrderBy,
+        ]
+      : input.sort === "price-asc"
+        ? [
+            sql`case when ${currentMarketPriceByCard.amountMinor} is null then 1 else 0 end`,
+            asc(currentMarketPriceByCard.amountMinor),
+            ...relevanceOrderBy,
+          ]
+        : relevanceOrderBy;
   const [totalRow] = await db
     .select({ count: sql<number>`count(*)::integer` })
     .from(cards)
@@ -192,13 +215,9 @@ async function queryLocalSearchPage(input: {
     .select({ card: cards, set: cardSets })
     .from(cards)
     .innerJoin(cardSets, eq(cards.setId, cardSets.id))
+    .leftJoin(currentMarketPriceByCard, eq(currentMarketPriceByCard.cardId, cards.id))
     .where(whereSearch)
-    .orderBy(
-      asc(cards.name),
-      sql`case when ${cards.number} ~ '^[0-9]+' then substring(${cards.number} from '^[0-9]+')::integer else null end asc nulls last`,
-      asc(cards.number),
-      asc(cards.providerId),
-    )
+    .orderBy(...orderBy)
     .limit(input.pageSize)
     .offset(offset);
 
@@ -210,13 +229,36 @@ async function queryLocalClosestMatches(input: {
   normalizedNumber: string | null;
   page: number;
   pageSize: number;
+  sort: SearchCardSort;
 }) {
   const normalizedName = normalizeSearchText(input.name);
   const offset = (input.page - 1) * input.pageSize;
+  const currentMarketPriceByCard = currentMarketPriceByCardSubquery();
   const similarityScore = sql<number>`greatest(
     similarity(${normalizedCardNameSql()}, ${normalizedName}),
     word_similarity(${normalizedCardNameSql()}, ${normalizedName})
   )`;
+  const relevanceOrderBy = [
+    sql`${similarityScore} desc`,
+    asc(cards.name),
+    getCardNumberOrderSql(),
+    asc(cards.number),
+    asc(cards.providerId),
+  ];
+  const orderBy =
+    input.sort === "price-desc"
+      ? [
+          sql`case when ${currentMarketPriceByCard.amountMinor} is null then 1 else 0 end`,
+          desc(currentMarketPriceByCard.amountMinor),
+          ...relevanceOrderBy,
+        ]
+      : input.sort === "price-asc"
+        ? [
+            sql`case when ${currentMarketPriceByCard.amountMinor} is null then 1 else 0 end`,
+            asc(currentMarketPriceByCard.amountMinor),
+            ...relevanceOrderBy,
+          ]
+        : relevanceOrderBy;
   const whereClosest = and(
     eq(cards.languageCode, "en"),
     input.normalizedNumber ? sql`lower(${cards.number}) = ${input.normalizedNumber}` : undefined,
@@ -238,14 +280,9 @@ async function queryLocalClosestMatches(input: {
     .select({ card: cards, set: cardSets })
     .from(cards)
     .innerJoin(cardSets, eq(cards.setId, cardSets.id))
+    .leftJoin(currentMarketPriceByCard, eq(currentMarketPriceByCard.cardId, cards.id))
     .where(whereClosest)
-    .orderBy(
-      sql`${similarityScore} desc`,
-      asc(cards.name),
-      sql`case when ${cards.number} ~ '^[0-9]+' then substring(${cards.number} from '^[0-9]+')::integer else null end asc nulls last`,
-      asc(cards.number),
-      asc(cards.providerId),
-    )
+    .orderBy(...orderBy)
     .limit(input.pageSize)
     .offset(offset);
 
@@ -317,6 +354,10 @@ function currentMarketPriceByCardSubquery() {
     )
     .groupBy(cardVariants.cardId)
     .as("current_market_price_by_card");
+}
+
+function getCardNumberOrderSql() {
+  return sql`case when ${cards.number} ~ '^[0-9]+' then substring(${cards.number} from '^[0-9]+')::integer else null end asc nulls last`;
 }
 
 async function getCurrentPricesForCardId(cardId: string) {
@@ -417,8 +458,7 @@ export const getCatalogPokemonCardsBySetPage = cache(async (input: {
   try {
     const whereSet = and(eq(cardSets.providerId, input.setId), eq(cards.languageCode, "en"));
     const currentMarketPriceByCard = currentMarketPriceByCardSubquery();
-    const numberSort = sql`case when ${cards.number} ~ '^[0-9]+' then substring(${cards.number} from '^[0-9]+')::integer else null end asc nulls last`;
-    const tieBreakSort = [numberSort, asc(cards.number), asc(cards.name), asc(cards.providerId)];
+    const tieBreakSort = [getCardNumberOrderSql(), asc(cards.number), asc(cards.name), asc(cards.providerId)];
     const orderBy =
       sort === "price-desc"
         ? [
@@ -553,10 +593,12 @@ export async function searchCatalogPokemonCards(input: {
   mode?: "search" | "suggest";
   page?: number;
   pageSize?: number;
+  sort?: SearchCardSort;
 }): Promise<CardSearchPayload> {
   const parsedQuery = parseCardSearchQuery(input.query);
   const page = input.page ?? 1;
   const pageSize = input.pageSize ?? (input.mode === "suggest" ? 6 : 20);
+  const sort = input.mode === "suggest" ? "relevance" : input.sort ?? "relevance";
   const nameTokens = parsedQuery.name ? tokenizeSearchName(parsedQuery.name) : [];
   const normalizedNumber = parsedQuery.number ? normalizeCardNumber(parsedQuery.number) : null;
 
@@ -568,6 +610,7 @@ export async function searchCatalogPokemonCards(input: {
       parsedQuery,
       page,
       pageSize,
+      sort,
       totalPages: 0,
     };
   }
@@ -580,6 +623,7 @@ export async function searchCatalogPokemonCards(input: {
       strategy: "phrase",
       page,
       pageSize,
+      sort,
     });
 
     if (localResult.totalCount === 0 && nameTokens.length > 0) {
@@ -590,6 +634,7 @@ export async function searchCatalogPokemonCards(input: {
         strategy: "tokens",
         page,
         pageSize,
+        sort,
       });
     }
 
@@ -601,6 +646,7 @@ export async function searchCatalogPokemonCards(input: {
         parsedQuery,
         page,
         pageSize,
+        sort,
         totalPages: Math.ceil(localResult.totalCount / pageSize),
       };
     }
@@ -613,6 +659,7 @@ export async function searchCatalogPokemonCards(input: {
         parsedQuery,
         page,
         pageSize,
+        sort,
         totalPages: Math.ceil(localResult.totalCount / pageSize),
       };
     }
@@ -623,6 +670,7 @@ export async function searchCatalogPokemonCards(input: {
         normalizedNumber,
         page,
         pageSize,
+        sort,
       });
 
       if (closestResult.totalCount > 0) {
@@ -633,6 +681,7 @@ export async function searchCatalogPokemonCards(input: {
           parsedQuery,
           page,
           pageSize,
+          sort,
           totalPages: Math.ceil(closestResult.totalCount / pageSize),
         };
       }

@@ -1,9 +1,15 @@
 "use client";
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 
 import { CardResultGrid } from "@/components/card-result-grid";
+import {
+  getSearchCardSortLabel,
+  SEARCH_CARD_SORT_OPTIONS,
+  type SearchCardSort,
+} from "@/lib/catalog/search-card-sort";
 import type { CardSearchPayload, CardSearchResult } from "@/lib/pokemon-tcg/types";
 
 type SearchResponse = Partial<CardSearchPayload> & { error?: string };
@@ -26,6 +32,8 @@ export function SearchResultsBrowser({
   const [error, setError] = useState<string | null>(null);
   const sentinelRef = useRef<HTMLDivElement>(null);
   const isLoadingRef = useRef(false);
+  const router = useRouter();
+  const sort = initialResult.sort ?? "relevance";
 
   useEffect(() => {
     const sentinel = sentinelRef.current;
@@ -46,6 +54,7 @@ export function SearchResultsBrowser({
           mode: "search",
           page: String(nextPage),
           pageSize: String(initialResult.pageSize),
+          sort,
         });
 
         fetch(`/api/cards/search?${params}`, { signal: controller.signal })
@@ -77,7 +86,13 @@ export function SearchResultsBrowser({
       controller.abort();
       observer.disconnect();
     };
-  }, [initialResult.pageSize, initialResult.totalPages, page, query]);
+  }, [initialResult.pageSize, initialResult.totalPages, page, query, sort]);
+
+  function updateSort(nextSort: SearchCardSort) {
+    const params = new URLSearchParams({ query });
+    if (nextSort !== "relevance") params.set("sort", nextSort);
+    router.replace(`/search?${params}`, { scroll: false });
+  }
 
   return (
     <div className="mt-12">
@@ -99,11 +114,28 @@ export function SearchResultsBrowser({
             </p>
           ) : null}
         </div>
-        {initialResult.matchType === "closest" && cards.length > 0 ? (
-          <p className="max-w-md text-sm text-[var(--muted)]">
-            We couldn&apos;t find an exact name and number, so these are ranked by similarity.
-          </p>
-        ) : null}
+        <div className="flex flex-col gap-3 sm:items-end">
+          {initialResult.matchType === "closest" && cards.length > 0 ? (
+            <p className="max-w-md text-sm text-[var(--muted)] sm:text-right">
+              We couldn&apos;t find an exact name and number, so best-match results are ranked by similarity.
+            </p>
+          ) : null}
+          {cards.length > 0 ? (
+            <label className="catalog-sort-control">
+              <span>Sort</span>
+              <select
+                value={sort}
+                onChange={(event) => updateSort(event.currentTarget.value as SearchCardSort)}
+              >
+                {SEARCH_CARD_SORT_OPTIONS.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+          ) : null}
+        </div>
       </div>
 
       {cards.length > 0 ? (
@@ -122,7 +154,9 @@ export function SearchResultsBrowser({
             </p>
           ) : null}
           {!isLoading && page >= initialResult.totalPages ? (
-            <p className="mt-6 text-center text-sm text-[var(--muted)]">All matching cards are loaded.</p>
+            <p className="mt-6 text-center text-sm text-[var(--muted)]">
+              All matching cards are loaded by {getSearchCardSortLabel(sort).toLowerCase()}.
+            </p>
           ) : null}
         </>
       ) : (

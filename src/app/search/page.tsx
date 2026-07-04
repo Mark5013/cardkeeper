@@ -6,6 +6,7 @@ import { CardSearch } from "@/components/card-search";
 import { SearchResultsBrowser } from "@/components/search-results-browser";
 import { SiteHeader } from "@/components/site-header";
 import { searchCatalogPokemonCards } from "@/lib/catalog/data";
+import { normalizeSearchCardSort } from "@/lib/catalog/search-card-sort";
 
 export const metadata: Metadata = {
   title: "Card search",
@@ -47,13 +48,13 @@ function SearchResultsSkeleton() {
   );
 }
 
-async function SearchResultsSection({ query }: { query: string }) {
+async function SearchResultsSection({ query, sort }: { query: string; sort: ReturnType<typeof normalizeSearchCardSort> }) {
   if (!query) return null;
 
   let result;
 
   try {
-    result = await searchCatalogPokemonCards({ query, mode: "search", page: 1, pageSize: 24 });
+    result = await searchCatalogPokemonCards({ query, mode: "search", page: 1, pageSize: 24, sort });
   } catch (error) {
     console.error("Search results page failed", error);
 
@@ -65,23 +66,29 @@ async function SearchResultsSection({ query }: { query: string }) {
     );
   }
 
-  return <SearchResultsBrowser key={query} query={query} initialResult={result} />;
+  return <SearchResultsBrowser key={`${query}:${sort}`} query={query} initialResult={result} />;
 }
 
 export default async function SearchPage({
   searchParams,
 }: {
-  searchParams: Promise<{ query?: string | string[]; page?: string | string[] }>;
+  searchParams: Promise<{ query?: string | string[]; page?: string | string[]; sort?: string | string[] }>;
 }) {
   const resolvedSearchParams = await searchParams;
   const rawQuery = resolvedSearchParams.query;
   const query = (Array.isArray(rawQuery) ? rawQuery[0] : rawQuery)?.trim() ?? "";
+  const rawSort = Array.isArray(resolvedSearchParams.sort)
+    ? resolvedSearchParams.sort[0]
+    : resolvedSearchParams.sort;
+  const sort = normalizeSearchCardSort(rawSort);
   const rawPage = Array.isArray(resolvedSearchParams.page)
     ? resolvedSearchParams.page[0]
     : resolvedSearchParams.page;
 
   if (query && rawPage) {
-    redirect(`/search?${new URLSearchParams({ query })}`);
+    const params = new URLSearchParams({ query });
+    if (sort !== "relevance") params.set("sort", sort);
+    redirect(`/search?${params}`);
   }
 
   return (
@@ -99,8 +106,8 @@ export default async function SearchPage({
           <CardSearch key={query} initialQuery={query} />
         </div>
 
-        <Suspense key={query} fallback={query ? <SearchResultsSkeleton /> : null}>
-          <SearchResultsSection query={query} />
+        <Suspense key={`${query}:${sort}`} fallback={query ? <SearchResultsSkeleton /> : null}>
+          <SearchResultsSection query={query} sort={sort} />
         </Suspense>
       </section>
     </main>

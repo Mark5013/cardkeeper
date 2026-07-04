@@ -116,7 +116,7 @@ Implemented:
 - Split EX Trainer Kit TCGCSV groups now map to multiple local sets using stricter card name plus number matching so shared card numbers do not attach prices to the wrong half-deck.
 - Current zero-price set-level gaps after reconciliation are `fut20` Pokemon Futsal Collection and `mcd21` McDonald's Collection 2021. TCGCSV did not expose an obvious Futsal group, and the 2021 McDonald's set was not mapped because TCGCSV does not list a 2021 McDonald's promo group.
 - Card detail pages now tolerate provider payloads where `cardmarket` exists but nested `prices` is absent.
-- Set detail pages now support DB-backed card sorting by current market price, with unpriced cards sorted after priced cards. Global search-result sorting is still intentionally paused.
+- Set detail pages and global search results now support DB-backed card sorting by current market price, with unpriced cards sorted after priced cards.
 
 Operational notes:
 
@@ -132,6 +132,7 @@ Recommended direction:
 - Implemented: write latest values to `current_prices` and append observations to `price_points`.
 - Implemented: keep missing prices as missing, never zero.
 - Implemented: preserve source, currency, price type, finish, and `observed_at`.
+- Current TCGCSV-backed prices are finish/printing-aware when TCGplayer exposes separate subtypes, but they are not condition-specific. Collection valuation still treats selected card condition as metadata rather than applying LP/MP/HP/Damaged adjustments.
 - Defer condition-specific pricing until a real condition-aware provider is chosen.
 
 ### 4. Improve local catalog freshness and reconciliation
