@@ -50,6 +50,13 @@
       "when": 1783270800000,
       "tag": "0006_catalog_active_flags",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1783296000000,
+      "tag": "0007_card_variant_checks",
+      "breakpoints": true
     }
   ]
 }

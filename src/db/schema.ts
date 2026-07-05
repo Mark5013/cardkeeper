@@ -104,6 +104,11 @@ export const cardVariants = pgTable(
       table.languageCode,
     ),
     index("card_variants_card_idx").on(table.cardId),
+    check(
+      "card_variants_condition_check",
+      sql`${table.condition} in ('unspecified', 'near_mint', 'lightly_played', 'moderately_played', 'heavily_played', 'damaged')`,
+    ),
+    check("card_variants_printing_format_check", sql`${table.printing} ~ '^[a-z0-9_]{1,60}$'`),
   ],
 );
 
