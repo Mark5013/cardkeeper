@@ -359,7 +359,7 @@ function currentMarketPriceByCardSubquery() {
 }
 
 function getCardNumberOrderSql() {
-  return sql`case when ${cards.number} ~ '^[0-9]+' then substring(${cards.number} from '^[0-9]+')::integer else null end asc nulls last`;
+  return sql`${cards.numberSortKey} asc nulls last`;
 }
 
 async function getCurrentPricesForCardId(cardId: string) {

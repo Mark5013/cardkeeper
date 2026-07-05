@@ -53,7 +53,7 @@ async function searchByPhrase(sql, { name, number = null, page = 1, pageSize = 2
       and trim(regexp_replace(lower(name), '[^a-z0-9]+', ' ', 'g')) like ${`${normalizedName}%`}
       and (${number}::text is null or lower(number) = ${number})
     order by name asc,
-      case when number ~ '^[0-9]+' then substring(number from '^[0-9]+')::integer else null end asc nulls last,
+      number_sort_key asc nulls last,
       number asc,
       provider_id asc
     limit ${pageSize}
@@ -83,7 +83,7 @@ async function searchByTokens(sql, { name, number = null, page = 1, pageSize = 2
       and (${number}::text is null or lower(number) = ${number})
       and ${tokenFilters.length === 0 || sql`trim(regexp_replace(lower(name), '[^a-z0-9]+', ' ', 'g')) like all(${tokenFilters})`}
     order by name asc,
-      case when number ~ '^[0-9]+' then substring(number from '^[0-9]+')::integer else null end asc nulls last,
+      number_sort_key asc nulls last,
       number asc,
       provider_id asc
     limit ${pageSize}
@@ -114,7 +114,7 @@ async function searchByTrigram(sql, { name, number = null, page = 1, pageSize = 
         word_similarity(trim(regexp_replace(lower(name), '[^a-z0-9]+', ' ', 'g')), ${normalizedName})
       ) desc,
       name asc,
-      case when number ~ '^[0-9]+' then substring(number from '^[0-9]+')::integer else null end asc nulls last,
+      number_sort_key asc nulls last,
       number asc,
       provider_id asc
     limit ${pageSize}

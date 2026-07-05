@@ -200,7 +200,7 @@ Recommended improvements:
 - Implemented: add a generic `updated_at` trigger. Migration `drizzle/0003_updated_at_triggers.sql` adds a reusable trigger function and attaches it to `profiles`, `card_sets`, `cards`, `card_variants`, `collection_items`, and `current_prices`.
 - Implemented on July 5, 2026: added database check constraints for `card_variants.condition` and normalized `card_variants.printing`, so scripts/manual writes cannot insert unsupported conditions or unnormalized finish keys.
 - Implemented: add search-focused indexes for normalized card names, trigram search, lower card number, and `(set_id, number)`.
-- Consider a generated numeric card number sort key. Several queries sort by regex/substr numeric extraction at query time (`src/lib/catalog/data.ts:185-187`), which is useful but not index-friendly.
+- Implemented on July 5, 2026: added a stored generated `cards.number_sort_key` column plus set/order index, and updated catalog/collection ordering to use it instead of repeating regex/substr extraction at query time.
 - Review `bigint(..., { mode: "number" })` for price amounts if future providers can create values outside JS safe integer range. For card prices it is likely fine, but it is a conscious tradeoff.
 
 ## UX And Product Polish

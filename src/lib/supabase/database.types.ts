@@ -57,6 +57,7 @@ export type Database = {
           language_code: string;
           name: string;
           number: string;
+          number_sort_key: number | null;
           supertype: string | null;
           subtypes: string[] | null;
           rarity: string | null;

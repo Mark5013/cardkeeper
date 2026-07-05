@@ -63,6 +63,13 @@ export const cards = pgTable(
     languageCode: varchar("language_code", { length: 10 }).default("en").notNull(),
     name: text("name").notNull(),
     number: text("number").notNull(),
+    numberSortKey: integer("number_sort_key").generatedAlwaysAs(sql`
+      case
+        when "number" ~ '^[0-9]+'
+          then substring("number" from '^[0-9]+')::integer
+        else null
+      end
+    `),
     supertype: text("supertype"),
     subtypes: text("subtypes").array(),
     rarity: text("rarity"),
@@ -79,6 +86,7 @@ export const cards = pgTable(
     index("cards_name_idx").on(table.name),
     index("cards_number_idx").on(table.number),
     index("cards_set_idx").on(table.setId),
+    index("cards_set_number_sort_idx").on(table.setId, table.numberSortKey, table.number, table.providerId),
     index("cards_active_idx").on(table.isActive),
   ],
 );

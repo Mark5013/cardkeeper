@@ -180,7 +180,7 @@ export async function getCurrentCollection(
       .orderBy(
         sort === "created-asc" ? asc(collectionItems.createdAt) : desc(collectionItems.createdAt),
         asc(cards.name),
-        sql`case when ${cards.number} ~ '^[0-9]+' then substring(${cards.number} from '^[0-9]+')::integer else null end asc nulls last`,
+        sql`${cards.numberSortKey} asc nulls last`,
         asc(cards.number),
         asc(collectionItems.id),
       );
