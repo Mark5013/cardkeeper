@@ -174,7 +174,9 @@ The auth and ownership boundaries are solid for this stage. Collection routes va
 
 Recommended improvements:
 
-- Add rate limiting or abuse protection for public search/autocomplete and mutation routes. Search inputs are bounded (`src/app/api/cards/search/route.ts:7-10`), but a public DB-backed endpoint still needs operational protection.
+- Implemented conservative first pass on July 5, 2026: public DB-backed catalog APIs now use a shared per-IP in-memory limiter and return `429` with `Retry-After` when exceeded. This currently covers card search/autocomplete (`/api/cards/search`) and set-card pagination/sorting (`/api/sets/[id]/cards`) at 120 requests per minute per route group.
+- Add distributed rate limiting or provider-level abuse protection before serious production traffic. The current limiter is intentionally lightweight and per runtime instance; it is useful for local/self-hosted bursts but not a substitute for Redis/Upstash, Vercel Firewall, Cloudflare, or another shared edge/backend limiter.
+- Consider adding similar protection for authenticated mutation routes if abuse patterns appear. Collection routes already require a session and same-origin mutation headers, so they were left out of the conservative first pass.
 - Restrict external marketplace URLs by host. `getSafeExternalUrl()` currently allows any HTTPS URL from provider data (`src/app/cards/[id]/page.tsx:27-34`). For TCGplayer links, an allow-list is safer.
 - Keep route-level auth checks even though Proxy refreshes sessions. The local Next docs explicitly warn not to rely on Proxy alone for auth coverage.
 - If sitemap, robots, or metadata routes are added, revisit the Proxy matcher (`src/proxy.ts:9-12`) so session refresh does not unnecessarily process metadata/static requests.

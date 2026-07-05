@@ -3,6 +3,7 @@ import { z } from "zod";
 
 import { searchCatalogPokemonCards } from "@/lib/catalog/data";
 import { normalizeSearchCardSort } from "@/lib/catalog/search-card-sort";
+import { rateLimitRequest } from "@/lib/rate-limit";
 
 const searchSchema = z.object({
   query: z.string().trim().min(1, "Enter a card name or number.").max(110),
@@ -13,6 +14,16 @@ const searchSchema = z.object({
 });
 
 export async function GET(request: Request) {
+  const limitedResponse = rateLimitRequest(request, {
+    keyPrefix: "api:cards-search",
+    limit: 120,
+    windowMs: 60_000,
+  });
+
+  if (limitedResponse) {
+    return limitedResponse;
+  }
+
   const url = new URL(request.url);
   const parsed = searchSchema.safeParse(Object.fromEntries(url.searchParams));
 

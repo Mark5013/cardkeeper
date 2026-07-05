@@ -3,6 +3,7 @@ import { z } from "zod";
 
 import { getCatalogPokemonCardsBySetPage } from "@/lib/catalog/data";
 import { normalizeSetCardSort } from "@/lib/catalog/set-card-sort";
+import { rateLimitRequest } from "@/lib/rate-limit";
 
 const setCardsSchema = z.object({
   page: z.coerce.number().int().min(1).max(1000).default(1),
@@ -13,6 +14,16 @@ const setCardsSchema = z.object({
 type RouteContext = { params: Promise<{ id: string }> };
 
 export async function GET(request: Request, context: RouteContext) {
+  const limitedResponse = rateLimitRequest(request, {
+    keyPrefix: "api:set-cards",
+    limit: 120,
+    windowMs: 60_000,
+  });
+
+  if (limitedResponse) {
+    return limitedResponse;
+  }
+
   const { id } = await context.params;
   const url = new URL(request.url);
   const parsed = setCardsSchema.safeParse(Object.fromEntries(url.searchParams));
