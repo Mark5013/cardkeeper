@@ -1,3 +1,5 @@
+"use client";
+
 import Link from "next/link";
 
 import { ImageWithFallback } from "@/components/image-with-fallback";
@@ -11,56 +13,78 @@ function formatCondition(condition: string) {
   return CARD_CONDITIONS.find((option) => option.value === condition)?.label ?? condition;
 }
 
-export function CollectionCardGrid({ items }: { items: CollectionItemDto[] }) {
+export function CollectionCardGrid({
+  items,
+  decrementingVariantIds,
+  onDecrementItem,
+}: {
+  items: CollectionItemDto[];
+  decrementingVariantIds: Set<string>;
+  onDecrementItem: (item: CollectionItemDto) => void;
+}) {
   return (
     <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
-      {items.map((item) => (
-        <Link
-          className="group overflow-hidden rounded-lg border border-[var(--line)] bg-[var(--surface)] transition duration-200 hover:-translate-y-1 hover:border-[var(--secondary)]"
-          href={`/cards/${encodeURIComponent(item.providerCardId)}`}
-          key={item.id}
-        >
-          <div className="relative aspect-[4/3] overflow-hidden bg-[var(--surface-2)]">
-            <ImageWithFallback
-              src={item.imageSmallUrl}
-              alt={`${item.cardName} card`}
-              fill
-              sizes="(max-width: 640px) 90vw, (max-width: 1024px) 45vw, (max-width: 1280px) 30vw, 22vw"
-              className="object-contain p-5 transition duration-300 group-hover:scale-[1.03]"
-            />
-            <span className="absolute right-3 top-3 rounded-full border border-[var(--line)] bg-[var(--background)] px-2.5 py-0.5 text-xs font-bold text-[var(--ink)] shadow-[0_10px_24px_rgb(0_0_0_/_28%)]">
-              × {item.quantity}
-            </span>
-          </div>
+      {items.map((item) => {
+        const isDecrementing = decrementingVariantIds.has(item.cardVariantId);
 
-          <div className="p-4">
-            <p className="text-[0.68rem] font-semibold uppercase tracking-[0.12em] text-[var(--accent)]">
-              {item.setName} · #{item.cardNumber}
-            </p>
-            <h2 className="mt-1.5 text-base font-bold leading-6">{item.cardName}</h2>
-
-            <div className="mt-3 flex flex-wrap gap-1.5">
-              <span className="collection-pill">{formatPrinting(item.printing)}</span>
-              <span className="collection-pill">{formatCondition(item.condition)}</span>
-            </div>
-
-            <div className="mt-4 flex items-end justify-between gap-3 border-t border-[var(--line)] pt-3">
-              <div>
-                <p className="text-[0.68rem] text-[var(--muted)]">Market each</p>
-                <p className="mt-1 text-sm font-semibold">
-                  {item.unitPriceUsd === null ? "No price" : usd.format(item.unitPriceUsd)}
-                </p>
+        return (
+          <article
+            className="group relative overflow-hidden rounded-lg border border-[var(--line)] bg-[var(--surface)] transition duration-200 hover:-translate-y-1 hover:border-[var(--secondary)]"
+            key={item.id}
+          >
+            <button
+              type="button"
+              className="absolute left-3 top-3 z-10 inline-flex h-8 w-8 cursor-pointer items-center justify-center rounded-full border border-[var(--danger)] bg-[var(--background)] text-[var(--danger)] shadow-[0_10px_24px_rgb(0_0_0_/_28%)] transition hover:bg-[rgb(255_122_138_/_12%)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--danger)] disabled:cursor-wait disabled:opacity-55"
+              aria-label={`Remove one ${item.cardName} ${formatPrinting(item.printing)} ${formatCondition(item.condition)} from your collection`}
+              disabled={isDecrementing}
+              onClick={() => onDecrementItem(item)}
+            >
+              <span className="mt-px h-[1.5px] w-3 rounded-full bg-current" aria-hidden="true" />
+            </button>
+            <Link className="block" href={`/cards/${encodeURIComponent(item.providerCardId)}`}>
+              <div className="relative aspect-[4/3] overflow-hidden bg-[var(--surface-2)]">
+                <ImageWithFallback
+                  src={item.imageSmallUrl}
+                  alt={`${item.cardName} card`}
+                  fill
+                  sizes="(max-width: 640px) 90vw, (max-width: 1024px) 45vw, (max-width: 1280px) 30vw, 22vw"
+                  className="object-contain p-5 transition duration-300 group-hover:scale-[1.03]"
+                />
+                <span className="absolute right-3 top-3 rounded-full border border-[var(--line)] bg-[var(--background)] px-2.5 py-0.5 text-xs font-bold text-[var(--ink)] shadow-[0_10px_24px_rgb(0_0_0_/_28%)]">
+                  x {item.quantity}
+                </span>
               </div>
-              <div className="text-right">
-                <p className="text-[0.68rem] text-[var(--muted)]">Estimated value</p>
-                <p className="mt-1 text-base font-bold text-[var(--secondary)]">
-                  {item.estimatedValueUsd === null ? "—" : usd.format(item.estimatedValueUsd)}
+
+              <div className="p-4">
+                <p className="text-[0.68rem] font-semibold uppercase tracking-[0.12em] text-[var(--accent)]">
+                  {item.setName} - #{item.cardNumber}
                 </p>
+                <h2 className="mt-1.5 text-base font-bold leading-6">{item.cardName}</h2>
+
+                <div className="mt-3 flex flex-wrap gap-1.5">
+                  <span className="collection-pill">{formatPrinting(item.printing)}</span>
+                  <span className="collection-pill">{formatCondition(item.condition)}</span>
+                </div>
+
+                <div className="mt-4 flex items-end justify-between gap-3 border-t border-[var(--line)] pt-3">
+                  <div>
+                    <p className="text-[0.68rem] text-[var(--muted)]">Market each</p>
+                    <p className="mt-1 text-sm font-semibold">
+                      {item.unitPriceUsd === null ? "No price" : usd.format(item.unitPriceUsd)}
+                    </p>
+                  </div>
+                  <div className="text-right">
+                    <p className="text-[0.68rem] text-[var(--muted)]">Estimated value</p>
+                    <p className="mt-1 text-base font-bold text-[var(--secondary)]">
+                      {item.estimatedValueUsd === null ? "-" : usd.format(item.estimatedValueUsd)}
+                    </p>
+                  </div>
+                </div>
               </div>
-            </div>
-          </div>
-        </Link>
-      ))}
+            </Link>
+          </article>
+        );
+      })}
     </div>
   );
 }

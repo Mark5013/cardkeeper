@@ -1,6 +1,7 @@
 "use client";
 
 import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
+import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import { CollectionCardGrid } from "@/components/collection/collection-card-grid";
@@ -32,6 +33,7 @@ export function CollectionBrowser({
   totalItems: number;
   initialHasNextPage: boolean;
 }) {
+  const router = useRouter();
   const [items, setItems] = useState(initialItems);
   const [sort, setSort] = useState<CollectionSortOption>("created-desc");
   const [query, setQuery] = useState("");
@@ -41,6 +43,7 @@ export function CollectionBrowser({
   const [hasNextPage, setHasNextPage] = useState(initialHasNextPage);
   const [isLoadingMore, setIsLoadingMore] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const [decrementingVariantIds, setDecrementingVariantIds] = useState<Set<string>>(() => new Set());
   const [loadError, setLoadError] = useState<string | null>(null);
   const hasMountedRef = useRef(false);
   const selectedOption = SORT_OPTIONS.find((option) => option.value === sort) ?? SORT_OPTIONS[0];
@@ -141,6 +144,73 @@ export function CollectionBrowser({
       setLoadError(error instanceof Error ? error.message : "Unable to load more cards.");
     } finally {
       setIsLoadingMore(false);
+    }
+  }
+
+  async function decrementItem(item: CollectionItemDto) {
+    if (decrementingVariantIds.has(item.cardVariantId)) return;
+
+    setDecrementingVariantIds((current) => new Set(current).add(item.cardVariantId));
+    setLoadError(null);
+    let didUpdate = false;
+
+    try {
+      const nextQuantity = item.quantity - 1;
+
+      if (nextQuantity > 0) {
+        const response = await fetch(`/api/collection/${encodeURIComponent(item.cardVariantId)}`, {
+          method: "PUT",
+          headers: {
+            Accept: "application/json",
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({ quantity: nextQuantity }),
+        });
+
+        if (!response.ok) {
+          const payload = (await response.json().catch(() => ({}))) as { error?: string };
+          throw new Error(payload.error ?? "Unable to update this card.");
+        }
+
+        setItems((current) =>
+          current.map((currentItem) =>
+            currentItem.id === item.id
+              ? {
+                  ...currentItem,
+                  quantity: nextQuantity,
+                  estimatedValueUsd:
+                    currentItem.unitPriceUsd === null
+                      ? null
+                      : (Math.round(currentItem.unitPriceUsd * 100) * nextQuantity) / 100,
+                }
+              : currentItem,
+          ),
+        );
+        didUpdate = true;
+      } else {
+        const response = await fetch(`/api/collection/${encodeURIComponent(item.cardVariantId)}`, {
+          method: "DELETE",
+          headers: { Accept: "application/json" },
+        });
+
+        if (!response.ok) {
+          const payload = (await response.json().catch(() => ({}))) as { error?: string };
+          throw new Error(payload.error ?? "Unable to remove this card.");
+        }
+
+        setItems((current) => current.filter((currentItem) => currentItem.id !== item.id));
+        setVisibleTotalItems((current) => Math.max(0, current - 1));
+        didUpdate = true;
+      }
+    } catch (error) {
+      setLoadError(error instanceof Error ? error.message : "Unable to update this card.");
+    } finally {
+      setDecrementingVariantIds((current) => {
+        const next = new Set(current);
+        next.delete(item.cardVariantId);
+        return next;
+      });
+      if (didUpdate) router.refresh();
     }
   }
 
@@ -247,7 +317,11 @@ export function CollectionBrowser({
 
       {items.length > 0 ? (
         <>
-          <CollectionCardGrid items={items} />
+          <CollectionCardGrid
+            items={items}
+            decrementingVariantIds={decrementingVariantIds}
+            onDecrementItem={decrementItem}
+          />
           <div className="collection-pagination">
             <p className="text-sm font-semibold text-[var(--muted)]">
               {isRefreshing ? "Refreshing..." : `Loaded ${items.length} of ${visibleTotalItems}`}
