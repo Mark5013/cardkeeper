@@ -13,6 +13,11 @@ import type { PokemonTcgCard, PokemonTcgPrice } from "@/lib/pokemon-tcg/types";
 
 const usd = new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" });
 const eur = new Intl.NumberFormat("en-US", { style: "currency", currency: "EUR" });
+const allowedTcgplayerLinkHosts = new Set([
+  "prices.pokemontcg.io",
+  "tcgplayer.com",
+  "www.tcgplayer.com",
+]);
 
 function titleCase(value: string) {
   return value
@@ -30,7 +35,9 @@ function getSafeExternalUrl(value: string | undefined) {
 
   try {
     const url = new URL(value);
-    return url.protocol === "https:" ? url.toString() : null;
+    return url.protocol === "https:" && allowedTcgplayerLinkHosts.has(url.hostname.toLowerCase())
+      ? url.toString()
+      : null;
   } catch {
     return null;
   }
