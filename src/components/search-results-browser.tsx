@@ -13,6 +13,84 @@ import {
 import type { CardSearchPayload, CardSearchResult } from "@/lib/pokemon-tcg/types";
 
 type SearchResponse = Partial<CardSearchPayload> & { error?: string };
+type StoredSearchResultsState = {
+  version: 1;
+  savedAt: number;
+  query: string;
+  sort: SearchCardSort;
+  cards: CardSearchResult[];
+  page: number;
+  pageSize: number;
+  totalCount: number;
+  totalPages: number;
+  matchType: CardSearchPayload["matchType"];
+  scrollY: number;
+};
+
+const searchStateVersion = 1;
+const searchStateMaxAgeMs = 30 * 60 * 1000;
+
+function getSearchStateKey(query: string, sort: SearchCardSort) {
+  return `cardkeeper:search-results:${encodeURIComponent(query)}:${sort}`;
+}
+
+function readStoredSearchState(key: string) {
+  if (typeof window === "undefined") return null;
+
+  try {
+    const rawState = window.sessionStorage.getItem(key);
+    if (!rawState) return null;
+
+    const state = JSON.parse(rawState) as Partial<StoredSearchResultsState>;
+    const isExpired = typeof state.savedAt !== "number" || Date.now() - state.savedAt > searchStateMaxAgeMs;
+
+    if (
+      state.version !== searchStateVersion ||
+      isExpired ||
+      !Array.isArray(state.cards) ||
+      typeof state.page !== "number" ||
+      typeof state.pageSize !== "number" ||
+      typeof state.totalCount !== "number" ||
+      typeof state.totalPages !== "number" ||
+      typeof state.scrollY !== "number" ||
+      (state.matchType !== "matches" && state.matchType !== "closest" && state.matchType !== "suggestions")
+    ) {
+      window.sessionStorage.removeItem(key);
+      return null;
+    }
+
+    return state as StoredSearchResultsState;
+  } catch {
+    window.sessionStorage.removeItem(key);
+    return null;
+  }
+}
+
+function restoreScrollPosition(scrollY: number, onRestored: () => void) {
+  const root = document.documentElement;
+  const previousScrollBehavior = root.style.scrollBehavior;
+  const scrollOptions: ScrollToOptions = { top: scrollY, left: 0, behavior: "auto" };
+
+  root.style.scrollBehavior = "auto";
+
+  const scroll = () => {
+    window.scrollTo(scrollOptions);
+  };
+
+  scroll();
+  window.requestAnimationFrame(() => {
+    scroll();
+    window.requestAnimationFrame(() => {
+      scroll();
+
+      window.setTimeout(() => {
+        scroll();
+        root.style.scrollBehavior = previousScrollBehavior;
+        onRestored();
+      }, 0);
+    });
+  });
+}
 
 function mergeUniqueCards(currentCards: CardSearchResult[], nextCards: CardSearchResult[]) {
   const seen = new Set(currentCards.map((card) => card.id));
@@ -64,10 +142,123 @@ export function SearchResultsBrowser({
   const sentinelRef = useRef<HTMLDivElement>(null);
   const isLoadingRef = useRef(false);
   const refreshControllerRef = useRef<AbortController | null>(null);
+  const restoreAttemptedRef = useRef(false);
+  const isRestoringRef = useRef(false);
+  const isNavigatingToCardRef = useRef(false);
+  const snapshotRef = useRef<StoredSearchResultsState | null>(null);
+
+  function persistSearchState(scrollY = typeof window === "undefined" ? 0 : window.scrollY) {
+    if (typeof window === "undefined") return;
+
+    const snapshot = snapshotRef.current;
+    if (!snapshot) return;
+
+    try {
+      window.sessionStorage.setItem(
+        getSearchStateKey(snapshot.query, snapshot.sort),
+        JSON.stringify({
+          ...snapshot,
+          savedAt: Date.now(),
+          scrollY,
+        }),
+      );
+    } catch {
+      // Storage can be unavailable or full; navigation should still work normally.
+    }
+  }
+
+  function handleCardNavigate() {
+    isNavigatingToCardRef.current = true;
+    persistSearchState(window.scrollY);
+  }
 
   useEffect(() => {
     return () => {
       refreshControllerRef.current?.abort();
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!("scrollRestoration" in window.history)) return;
+
+    const previousScrollRestoration = window.history.scrollRestoration;
+    window.history.scrollRestoration = "manual";
+
+    return () => {
+      window.history.scrollRestoration = previousScrollRestoration;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (restoreAttemptedRef.current) return;
+    restoreAttemptedRef.current = true;
+
+    const storedState = readStoredSearchState(getSearchStateKey(query, sort));
+    if (!storedState || storedState.query !== query || storedState.sort !== sort) return;
+    if (storedState.pageSize !== initialResult.pageSize) return;
+
+    isRestoringRef.current = true;
+    snapshotRef.current = storedState;
+
+    window.requestAnimationFrame(() => {
+      setCards(storedState.cards);
+      setPage(storedState.page);
+      setTotalCount(storedState.totalCount);
+      setTotalPages(storedState.totalPages);
+      setMatchType(storedState.matchType);
+
+      window.requestAnimationFrame(() => {
+        restoreScrollPosition(storedState.scrollY, () => {
+          isRestoringRef.current = false;
+          persistSearchState(storedState.scrollY);
+        });
+      });
+    });
+  }, [initialResult.pageSize, query, sort]);
+
+  useEffect(() => {
+    if (isRestoringRef.current || isRefreshing) return;
+
+    snapshotRef.current = {
+      version: searchStateVersion,
+      savedAt: Date.now(),
+      query,
+      sort,
+      cards,
+      page,
+      pageSize: initialResult.pageSize,
+      totalCount,
+      totalPages,
+      matchType,
+      scrollY: typeof window === "undefined" ? 0 : window.scrollY,
+    };
+
+    persistSearchState();
+  }, [cards, initialResult.pageSize, isRefreshing, matchType, page, query, sort, totalCount, totalPages]);
+
+  useEffect(() => {
+    let animationFrame = 0;
+
+    function schedulePersist() {
+      if (isNavigatingToCardRef.current) return;
+      if (animationFrame) return;
+
+      animationFrame = window.requestAnimationFrame(() => {
+        animationFrame = 0;
+        persistSearchState();
+      });
+    }
+
+    window.addEventListener("scroll", schedulePersist, { passive: true });
+    window.addEventListener("pagehide", schedulePersist);
+
+    return () => {
+      if (animationFrame) window.cancelAnimationFrame(animationFrame);
+      window.removeEventListener("scroll", schedulePersist);
+      window.removeEventListener("pagehide", schedulePersist);
+      if (!isNavigatingToCardRef.current) {
+        persistSearchState();
+      }
     };
   }, []);
 
@@ -207,7 +398,7 @@ export function SearchResultsBrowser({
 
       {cards.length > 0 ? (
         <>
-          {isRefreshing ? <LoadingCardGrid /> : <CardResultGrid cards={cards} />}
+          {isRefreshing ? <LoadingCardGrid /> : <CardResultGrid cards={cards} onCardNavigate={handleCardNavigate} />}
           <div ref={sentinelRef} className="h-12" aria-hidden="true" />
           {isLoading ? (
             <div className="mt-6 flex items-center justify-center gap-3 text-sm font-semibold text-[var(--muted)]" aria-live="polite">

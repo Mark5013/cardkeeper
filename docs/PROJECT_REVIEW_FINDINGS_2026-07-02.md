@@ -208,7 +208,7 @@ Recommended improvements:
 Recommended improvements:
 
 - Implemented: update stale product copy. The homepage previously described the collection as "Ready to connect" and said search was backed by the Pokemon TCG API (`src/app/page.tsx:7-36`), while the app now has local catalog search and connected collection persistence. The README also said auth and collection persistence were the next milestone (`README.md:27`), which is no longer true.
-- Add a "Load more" fallback to infinite scroll and preserve search scroll/results state when returning from a card page. The July 2 handoff already notes the scroll restoration limitation.
+- Implemented on July 5, 2026: search results now preserve loaded cards, sort/count metadata, and scroll position in session storage when users open a card and return. A visible "Load more" fallback was intentionally skipped to keep the results UI streamlined. Follow-up: card detail pages now have a route-level loading skeleton for immediate navigation feedback, and search restoration temporarily disables smooth scrolling so the saved scroll position is restored reliably.
 - Add collection filters by card name, set, finish, condition, and unpriced status.
 - Consider grouping variants of the same card in collection views once users can own several finishes/conditions.
 - Revisit empty collection copy in `src/app/collection/page.tsx`; it still says controls are the next feature even though controls exist.

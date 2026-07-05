@@ -8,7 +8,13 @@ const usd = new Intl.NumberFormat("en-US", {
   currency: "USD",
 });
 
-export function CardResultGrid({ cards }: { cards: CardSearchResult[] }) {
+export function CardResultGrid({
+  cards,
+  onCardNavigate,
+}: {
+  cards: CardSearchResult[];
+  onCardNavigate?: () => void;
+}) {
   return (
     <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
       {cards.map((card) => (
@@ -16,6 +22,7 @@ export function CardResultGrid({ cards }: { cards: CardSearchResult[] }) {
           className="group overflow-hidden rounded-lg border border-[var(--line)] bg-[var(--surface)] transition duration-200 hover:-translate-y-1 hover:border-[var(--secondary)]"
           href={`/cards/${encodeURIComponent(card.id)}`}
           key={card.id}
+          onClick={onCardNavigate}
           prefetch={false}
         >
           <div className="grid grid-cols-[7rem_minmax(0,1fr)] gap-5 p-5">
