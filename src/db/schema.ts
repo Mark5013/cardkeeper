@@ -171,3 +171,28 @@ export const pricePoints = pgTable(
     check("price_points_amount_nonnegative", sql`${table.amountMinor} >= 0`),
   ],
 );
+
+export const catalogImportRuns = pgTable(
+  "catalog_import_runs",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    source: text("source").default("pokemon_tcg_api").notNull(),
+    mode: text("mode").notNull(),
+    status: text("status").default("running").notNull(),
+    options: jsonb("options").$type<Record<string, unknown>>(),
+    setsProcessed: integer("sets_processed").default(0).notNull(),
+    cardsProcessed: integer("cards_processed").default(0).notNull(),
+    startedAt: timestamp("started_at", { withTimezone: true }).defaultNow().notNull(),
+    finishedAt: timestamp("finished_at", { withTimezone: true }),
+    durationMs: integer("duration_ms"),
+    errorMessage: text("error_message"),
+    ...timestamps,
+  },
+  (table) => [
+    index("catalog_import_runs_started_at_idx").on(table.startedAt),
+    index("catalog_import_runs_status_idx").on(table.status),
+    check("catalog_import_runs_status_check", sql`${table.status} in ('running', 'succeeded', 'failed')`),
+    check("catalog_import_runs_sets_processed_nonnegative", sql`${table.setsProcessed} >= 0`),
+    check("catalog_import_runs_cards_processed_nonnegative", sql`${table.cardsProcessed} >= 0`),
+  ],
+);

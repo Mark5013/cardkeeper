@@ -107,8 +107,11 @@ function parsePositiveInteger(value, label) {
 
 async function importCatalog() {
   const startedAt = Date.now();
-  let setCount = 0;
-  let cardCount = 0;
+  const stats = {
+    setCount: 0,
+    cardCount: 0,
+  };
+  const runId = await createCatalogImportRun();
 
   console.log(
     `Starting catalog import${options.dryRun ? " (dry run)" : ""}${
@@ -116,18 +119,97 @@ async function importCatalog() {
     }.`,
   );
 
-  if (!options.cardsOnly) {
-    setCount = await importSets();
+  try {
+    if (!options.cardsOnly) {
+      stats.setCount = await importSets();
+    }
+
+    if (!options.setsOnly) {
+      stats.cardCount = options.cardsBySet ? await importCardsBySet() : await importCards();
+    }
+
+    await finishCatalogImportRun(runId, "succeeded", stats, startedAt);
+
+    const elapsedSeconds = ((Date.now() - startedAt) / 1000).toFixed(1);
+    console.log(
+      `Catalog import complete in ${elapsedSeconds}s. ${stats.setCount.toLocaleString()} sets, ${stats.cardCount.toLocaleString()} cards processed.`,
+    );
+  } catch (error) {
+    try {
+      await finishCatalogImportRun(runId, "failed", stats, startedAt, error);
+    } catch (updateError) {
+      console.error("Failed to mark catalog import run as failed", updateError);
+    }
+
+    throw error;
+  }
+}
+
+async function createCatalogImportRun() {
+  const [row] = await sql`
+    insert into catalog_import_runs (
+      mode,
+      status,
+      options
+    )
+    values (
+      ${getCatalogImportMode()},
+      'running',
+      ${sql.json(getCatalogImportOptions())}
+    )
+    returning id
+  `;
+
+  return row.id;
+}
+
+async function finishCatalogImportRun(runId, status, stats, startedAt, error = null) {
+  await sql`
+    update catalog_import_runs
+    set
+      status = ${status},
+      sets_processed = ${stats.setCount},
+      cards_processed = ${stats.cardCount},
+      finished_at = now(),
+      duration_ms = ${Date.now() - startedAt},
+      error_message = ${error ? getErrorMessage(error) : null}
+    where id = ${runId}
+  `;
+}
+
+function getCatalogImportMode() {
+  if (options.setsOnly) return "sets-only";
+  if (options.cardsOnly && options.cardsBySet) return "cards-by-set-only";
+  if (options.cardsOnly) return "cards-only";
+  if (options.cardsBySet) return "full-cards-by-set";
+
+  return "full";
+}
+
+function getCatalogImportOptions() {
+  return {
+    dryRun: options.dryRun,
+    cardsOnly: options.cardsOnly,
+    setsOnly: options.setsOnly,
+    cardsBySet: options.cardsBySet,
+    missingOnly: options.missingOnly,
+    setId: options.setId,
+    setPageSize: options.setPageSize,
+    cardPageSize: options.cardPageSize,
+    maxPages: options.maxPages,
+    startSetPage: options.startSetPage,
+    startCardPage: options.startCardPage,
+    maxRetries: options.maxRetries,
+    pageDelayMs: options.pageDelayMs,
+  };
+}
+
+function getErrorMessage(error) {
+  if (error instanceof Error) {
+    return error.stack ?? error.message;
   }
 
-  if (!options.setsOnly) {
-    cardCount = options.cardsBySet ? await importCardsBySet() : await importCards();
-  }
-
-  const elapsedSeconds = ((Date.now() - startedAt) / 1000).toFixed(1);
-  console.log(
-    `Catalog import complete in ${elapsedSeconds}s. ${setCount.toLocaleString()} sets, ${cardCount.toLocaleString()} cards processed.`,
-  );
+  return String(error);
 }
 
 async function importSets() {

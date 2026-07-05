@@ -123,7 +123,8 @@ Implemented:
 - Follow-up implemented on July 5, 2026: TCGCSV price matching now handles additional supplemental mappings and card-number quirks, including Aquapolis `a`/`b` variants, SM Base unnumbered 2017 energies, Base Machamp via Deck Exclusives, League & Championship placement variants, and additional Alternate Art Promo aliases for Flashfire, Roaring Skies, and Shining Legends.
 - Multiple TCGCSV products that collapse to one local card/printing are now averaged instead of whichever product was processed last winning arbitrarily.
 - Current TCGCSV-backed card-level coverage is now 20,290 / 20,329 cards, or about 99.81%, excluding the known no-coverage sets `fut20` Pokemon Futsal Collection and `mcd21` McDonald's Collection 2021.
-- Remaining gaps are intentionally left for a later audit to distinguish cards that still need mapping work from TCGCSV products that exist but have no price rows. Confirmed product-without-price-row examples include Team Up `Pokemon Communication #152a`, DP Black Star Promos `Tropical Wind #DP05`, and Nintendo Black Star Promos `Tropical Tidal Wave #36`.
+- Follow-up audit on July 5, 2026 found four current no-price cards with no plausible TCGplayer/TCGCSV product mapping after a product-list scan and manual review: DP Black Star Promos `Beginning Door #DP54`, DP Black Star Promos `Ultimate Zone #DP55`, BW Black Star Promos `Pikachu #BW77`, and BW Black Star Promos `Raichu #BW78`.
+- Other remaining card-level gaps are treated as TCGCSV product-without-price-row cases or low-priority special listings to revisit later. Confirmed product-without-price-row examples include Team Up `Pokemon Communication #152a`, DP Black Star Promos `Tropical Wind #DP05`, and Nintendo Black Star Promos `Tropical Tidal Wave #36`.
 
 Operational notes:
 
@@ -144,11 +145,19 @@ Recommended direction:
 
 ### 4. Improve local catalog freshness and reconciliation
 
+Status: Started on July 5, 2026.
+
+Implemented:
+
+- Added migration `drizzle/0004_catalog_import_runs.sql` and schema model `catalogImportRuns` for catalog import operational history.
+- Catalog imports now create a run record before provider reads, then mark the run `succeeded` or `failed` with mode, options, processed set/card counts, duration, and error details.
+- The import-run table is private operational data: RLS is enabled and no anon/authenticated grants are added.
+
 The importer is capable and has useful resume/missing-only modes (`scripts/import-catalog.mjs:47-61`, `scripts/import-catalog.mjs:233-241`), but the catalog has no import run metadata, active/deleted marker, or reconciliation history. Cards are upserted with full `provider_data` (`scripts/import-catalog.mjs:384-449`), which is good for snapshots but makes it harder to answer "when was this card last verified?"
 
 Recommended direction:
 
-- Add a `catalog_import_runs` table or equivalent metadata log.
+- Implemented: add a `catalog_import_runs` table or equivalent metadata log.
 - Store `last_imported_at` or `provider_updated_at` on sets/cards.
 - Add an `is_active` flag or tombstone strategy for cards removed or no longer returned by the provider.
 - Make the missing-only check part of an operational checklist or CI/manual release checklist.
@@ -220,8 +229,7 @@ Recommended additions:
 
 1. Revisit eBay listing cards after developer approval and keep outbound search links as fallback.
 2. Add signup happy-path coverage once test-user lifecycle and email confirmation handling are finalized.
-3. Audit the remaining no-price cards to separate missing TCGCSV mappings from TCGCSV products that have no price rows.
-4. Add unpriced-status filtering now that collection valuation reads from `current_prices`.
+3. Add unpriced-status filtering now that collection valuation reads from `current_prices`.
 
 ## Next Session Starting Point
 
@@ -229,7 +237,7 @@ Next product pass:
 
 - Browser smoke coverage is in place for public search, card detail, anonymous collection redirect, seeded login, collection page access, authenticated add/update/remove route flows, and collection filter/sort controls.
 - Price history UI is in place using populated `price_points`.
-- TCGCSV price coverage is about 99.81% excluding `fut20` and `mcd21`; next pricing work is a focused audit of the remaining no-price cards.
+- TCGCSV price coverage is about 99.81% excluding `fut20` and `mcd21`; the remaining no-price cards are either confirmed no-mapping cases or TCGCSV product-without-price-row/special-listing follow-ups.
 - Keep signup happy-path coverage pending until test-user lifecycle and email confirmation handling are finalized.
 - Verify with:
 
