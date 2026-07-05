@@ -34,12 +34,62 @@ const SUPPLEMENTAL_GROUP_TERMS = [
 ];
 const SET_NAME_ALIASES = new Map(
   [
+    [
+      "Alternate Art Promos",
+      [
+        "Ancient Origins",
+        "BREAKpoint",
+        "BREAKthrough",
+        "Burning Shadows",
+        "Celestial Storm",
+        "Cosmic Eclipse",
+        "Crimson Invasion",
+        "Dragon Majesty",
+        "Fates Collide",
+        "Flashfire",
+        "Forbidden Light",
+        "Furious Fists",
+        "Generations",
+        "Guardians Rising",
+        "Lost Thunder",
+        "Phantom Forces",
+        "Roaring Skies",
+        "Shining Legends",
+        "SM Black Star Promos",
+        "Sun & Moon",
+        "Team Up",
+        "Unbroken Bonds",
+        "Unified Minds",
+        "XY Black Star Promos",
+      ],
+    ],
+    ["Battle Academy 2024", ["Scarlet & Violet Promos"]],
     ["Best of Promos", ["Best of Game"]],
+    ["Deck Exclusives", ["Base"]],
+    [
+      "League & Championship Cards",
+      [
+        "Burning Shadows",
+        "Celestial Storm",
+        "Dragon Majesty",
+        "Forbidden Light",
+        "Guardians Rising",
+        "Lost Thunder",
+        "Shining Legends",
+        "Team Up",
+        "Ultra Prism",
+        "Unbroken Bonds",
+        "Unified Minds",
+        "XY Black Star Promos",
+      ],
+    ],
     ["Ruby and Sapphire", ["Ruby & Sapphire"]],
     ["EX Trainer Kit 1: Latias & Latios", ["EX Trainer Kit Latias", "EX Trainer Kit Latios"]],
     ["EX Trainer Kit 2: Plusle & Minun", ["EX Trainer Kit 2 Plusle", "EX Trainer Kit 2 Minun"]],
     ["Diamond and Pearl", ["Diamond & Pearl"]],
     ["Black and White", ["Black & White"]],
+    ["Generations: Radiant Collection", ["Generations"]],
+    ["Legendary Treasures: Radiant Collection", ["Legendary Treasures"]],
     ["McDonald's Promos 2011", ["McDonald's Collection 2011"]],
     ["McDonald's Promos 2012", ["McDonald's Collection 2012"]],
     ["McDonald's Promos 2014", ["McDonald's Collection 2014"]],
@@ -65,6 +115,19 @@ const SET_NAME_ALIASES = new Map(
   ].map(([groupName, setNames]) => [
     normalizeSetName(groupName),
     (Array.isArray(setNames) ? setNames : [setNames]).map((setName) => normalizeSetName(setName)),
+  ]),
+);
+const GROUP_SET_CARD_NUMBER_ALLOWLIST = new Map(
+  [
+    [
+      "Battle Academy 2024",
+      "Scarlet & Violet Promos",
+      ["105", "106", "107", "108", "109", "110", "111", "112", "113", "114", "148"],
+    ],
+    ["Deck Exclusives", "Base", ["8"]],
+  ].map(([groupName, setName, cardNumbers]) => [
+    getGroupSetKey(groupName, setName),
+    new Set(cardNumbers.map((cardNumber) => normalizeCardNumber(cardNumber))),
   ]),
 );
 
@@ -196,6 +259,7 @@ async function refreshPrices() {
     for (const localSet of localSetsForGroup) {
       const setPriceRecords = await preparePriceRecordsForSet({
         cardProducts,
+        group,
         localSet,
         observedAt,
         pricesByProductId,
@@ -234,26 +298,36 @@ async function refreshPrices() {
 
 async function preparePriceRecordsForSet({
   cardProducts,
+  group,
   localSet,
   observedAt,
   pricesByProductId,
   requireNameMatch,
 }) {
   const localCards = await getLocalCardsForSet(localSet.id);
-  const localCardsByNumber = new Map(localCards.map((card) => [normalizeCardNumber(card.number), card]));
+  const allowedCardNumbers = getAllowedCardNumbers(group, localSet);
+  const duplicateCardNumbers = getDuplicateCardNumbers(localCards);
+  const shouldRequireNameMatch = requireNameMatch || duplicateCardNumbers.size > 0;
+  const localCardsByNumber = new Map(
+    localCards.map((card) => [normalizeCardNumberForSet(card.number, localSet), card]),
+  );
   const localCardsByNumberAndName = new Map(
-    localCards.map((card) => [getCardNumberAndNameKey(card.number, card.name), card]),
+    localCards.map((card) => [getCardNumberAndNameKey(card.number, card.name, localSet), card]),
   );
   const amountsByCardPrinting = new Map();
   const priceRecords = [];
   let productsMatched = 0;
 
   for (const product of cardProducts) {
-    const cardNumber = getExtendedDataValue(product, "Number");
+    if (shouldSkipProductForSet(product, group, localSet)) continue;
+
+    const cardNumber = getProductCardNumber(product, localSet);
+    if (allowedCardNumbers && !allowedCardNumbers.has(normalizeCardNumber(cardNumber))) continue;
+
     const localCard = cardNumber
-      ? requireNameMatch
+      ? shouldRequireNameMatch
         ? getNameMatchedLocalCard(product, cardNumber, localSet, localCardsByNumberAndName)
-        : localCardsByNumber.get(normalizeCardNumber(cardNumber))
+        : localCardsByNumber.get(normalizeCardNumberForSet(cardNumber, localSet))
       : null;
     const productPrices = pricesByProductId.get(product.productId) ?? [];
 
@@ -267,7 +341,7 @@ async function preparePriceRecordsForSet({
 
       if (amountRecords.length === 0) continue;
 
-      amountsByCardPrinting.set(getCardPrintingKey(localCard.id, printing), {
+      mergeAmountRecordsByCardPrinting(amountsByCardPrinting, {
         cardId: localCard.id,
         printing,
         amountRecords,
@@ -301,10 +375,167 @@ async function preparePriceRecordsForSet({
   return { priceRecords, productsMatched };
 }
 
+function getProductCardNumber(product, localSet) {
+  const cardNumber = getExtendedDataValue(product, "Number");
+
+  if (cardNumber) return cardNumber;
+
+  if (localSet.provider_id === "sm1") {
+    return getSunMoonEnergyCardNumber(product);
+  }
+
+  return "";
+}
+
+function getSunMoonEnergyCardNumber(product) {
+  const rawName = String(product.name ?? "").toLowerCase();
+  if (!rawName.includes("(2017 unnumbered)")) return "";
+
+  const energyType = normalizeCardName(rawName.replace(/\(2017 unnumbered\)/, "")).replace(/\s+energy$/, "");
+  const energyNumbers = new Map([
+    ["grass", "164"],
+    ["fire", "165"],
+    ["water", "166"],
+    ["lightning", "167"],
+    ["psychic", "168"],
+    ["fighting", "169"],
+    ["darkness", "170"],
+    ["metal", "171"],
+    ["fairy", "172"],
+  ]);
+
+  return energyNumbers.get(energyType) ?? "";
+}
+
+function shouldSkipProductForSet(product, group, localSet) {
+  const groupName = normalizeSetName(group.name);
+  const localSetName = normalizeSetName(localSet.name);
+  const productName = normalizeCardName(product.name);
+  const cardNumber = normalizeCardNumber(getExtendedDataValue(product, "Number"));
+
+  if (
+    groupName === normalizeSetName("Alternate Art Promos") &&
+    localSetName === normalizeSetName("Team Up") &&
+    productName.includes("communication") &&
+    cardNumber === "152b"
+  ) {
+    return true;
+  }
+
+  if (groupName === normalizeSetName("League & Championship Cards") && productName.includes("league challenge")) {
+    return !productName.includes("1st place");
+  }
+
+  if (groupName === normalizeSetName("Nintendo Promos") && localSetName === normalizeSetName("Nintendo Black Star Promos")) {
+    return productName.includes("tropical tidal wave") && !productName.includes("participation");
+  }
+
+  if (
+    groupName === normalizeSetName("Diamond and Pearl Promos") &&
+    localSetName === normalizeSetName("DP Black Star Promos")
+  ) {
+    return productName.includes("tropical wind") && productName.includes("staff");
+  }
+
+  if (groupName === normalizeSetName("Deck Exclusives") && localSetName === normalizeSetName("Base")) {
+    return productName.includes("machamp") && productName.includes("shadowless");
+  }
+
+  return false;
+}
+
+function mergeAmountRecordsByCardPrinting(amountsByCardPrinting, priceInput) {
+  const key = getCardPrintingKey(priceInput.cardId, priceInput.printing);
+  const existingInput = amountsByCardPrinting.get(key);
+
+  if (!existingInput) {
+    amountsByCardPrinting.set(key, {
+      ...priceInput,
+      samples: 1,
+    });
+    return;
+  }
+
+  amountsByCardPrinting.set(key, {
+    cardId: priceInput.cardId,
+    printing: priceInput.printing,
+    amountRecords: averageAmountRecords(existingInput.amountRecords, priceInput.amountRecords, existingInput.samples),
+    samples: existingInput.samples + 1,
+  });
+}
+
+function averageAmountRecords(existingAmountRecords, nextAmountRecords, existingSamples) {
+  const amountRecordsByType = new Map(existingAmountRecords.map((record) => [record.priceType, record]));
+
+  for (const nextRecord of nextAmountRecords) {
+    const existingRecord = amountRecordsByType.get(nextRecord.priceType);
+
+    amountRecordsByType.set(nextRecord.priceType, {
+      priceType: nextRecord.priceType,
+      amountMinor: existingRecord
+        ? Math.round((existingRecord.amountMinor * existingSamples + nextRecord.amountMinor) / (existingSamples + 1))
+        : nextRecord.amountMinor,
+    });
+  }
+
+  return Array.from(amountRecordsByType.values());
+}
+
 function getNameMatchedLocalCard(product, cardNumber, localSet, localCardsByNumberAndName) {
   if (hasOtherSplitSetMarker(product.name, localSet.name)) return null;
 
-  return localCardsByNumberAndName.get(getCardNumberAndNameKey(cardNumber, product.name));
+  for (const productName of getProductNameCandidates(product, cardNumber, localSet)) {
+    const localCard = localCardsByNumberAndName.get(getCardNumberAndNameKey(cardNumber, productName, localSet));
+
+    if (localCard) return localCard;
+  }
+
+  return null;
+}
+
+function getProductNameCandidates(product, cardNumber, localSet) {
+  return uniqueStrings(
+    [product.name, product.cleanName].flatMap((productName) => [
+      productName,
+      stripSunMoonUnnumberedEnergySuffix(productName, localSet),
+      stripTrailingCardNumber(productName, cardNumber, localSet),
+    ]),
+  );
+}
+
+function stripSunMoonUnnumberedEnergySuffix(value, localSet) {
+  if (localSet.provider_id !== "sm1") return "";
+
+  return normalizeCardName(value).replace(/\s+2017\s+unnumbered$/, "").trim();
+}
+
+function stripTrailingCardNumber(value, cardNumber, localSet) {
+  const normalizedName = normalizeCardName(value);
+  const normalizedNumbers = getCardNumberTextCandidates(cardNumber, localSet);
+
+  return normalizedNumbers.reduce((currentName, normalizedNumber) => {
+    if (!normalizedNumber) return currentName;
+
+    const numberPattern = escapeRegExp(normalizedNumber);
+
+    return currentName
+      .replace(new RegExp(`\\s+${numberPattern}(?:\\s+\\d+)?(?:\\s+.*)?$`), "")
+      .trim();
+  }, normalizedName);
+}
+
+function getCardNumberTextCandidates(cardNumber, localSet) {
+  const rawNumber = String(cardNumber ?? "").split("/")[0].toLowerCase().trim();
+
+  return uniqueStrings([normalizeCardNumber(cardNumber), normalizeCardNumberForSet(cardNumber, localSet), rawNumber]);
+}
+
+function uniqueStrings(values) {
+  return [...new Set(values.filter((value) => typeof value === "string" && value.trim().length > 0))];
+}
+
+function escapeRegExp(value) {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
 function hasOtherSplitSetMarker(productName, localSetName) {
@@ -565,6 +796,14 @@ function findAliasedLocalSets(groupNames, setMatchers) {
   return [];
 }
 
+function getAllowedCardNumbers(group, localSet) {
+  return GROUP_SET_CARD_NUMBER_ALLOWLIST.get(getGroupSetKey(group.name, localSet.name)) ?? null;
+}
+
+function getGroupSetKey(groupName, setName) {
+  return `${normalizeSetName(groupName)}:${normalizeSetName(setName)}`;
+}
+
 function getGroupCoreName(value) {
   return value.includes(":") ? value.split(":").slice(1).join(":") : value;
 }
@@ -587,7 +826,13 @@ function isSupplementalGroupName(value) {
 }
 
 function isCardProduct(product) {
-  return Boolean(getExtendedDataValue(product, "Number"));
+  return Boolean(getExtendedDataValue(product, "Number")) || isSunMoonUnnumberedEnergyProduct(product);
+}
+
+function isSunMoonUnnumberedEnergyProduct(product) {
+  const rawName = String(product.name ?? "").toLowerCase();
+
+  return rawName.includes("energy") && rawName.includes("(2017 unnumbered)");
 }
 
 function getExtendedDataValue(product, key) {
@@ -630,13 +875,39 @@ function normalizePrinting(value) {
 function normalizeCardNumber(value) {
   return String(value ?? "")
     .split("/")[0]
-    .replace(/^0+(?=\d)/, "")
     .toLowerCase()
+    .replace(/^0+(?=\d)/, "")
+    .replace(/^([a-z]+)0+(?=\d)/, "$1")
     .trim();
 }
 
-function getCardNumberAndNameKey(number, name) {
-  return `${normalizeCardNumber(number)}:${normalizeCardName(name)}`;
+function getCardNumberAndNameKey(number, name, localSet = null) {
+  return `${normalizeCardNumberForSet(number, localSet)}:${normalizeCardName(name)}`;
+}
+
+function normalizeCardNumberForSet(value, localSet) {
+  const normalizedNumber = normalizeCardNumber(value);
+
+  if (localSet?.provider_id === "ecard2") {
+    return normalizedNumber.replace(/^(\d+)[ab]$/, "$1");
+  }
+
+  if (localSet?.provider_id === "svp") {
+    return normalizedNumber.replace(/^svp\s*(?=\d)/, "");
+  }
+
+  return normalizedNumber;
+}
+
+function getDuplicateCardNumbers(cards) {
+  const countsByNumber = new Map();
+
+  for (const card of cards) {
+    const number = normalizeCardNumber(card.number);
+    countsByNumber.set(number, (countsByNumber.get(number) ?? 0) + 1);
+  }
+
+  return new Set([...countsByNumber].filter(([, count]) => count > 1).map(([number]) => number));
 }
 
 function normalizeCardName(value) {

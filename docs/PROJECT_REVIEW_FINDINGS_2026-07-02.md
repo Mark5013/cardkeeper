@@ -120,6 +120,10 @@ Implemented:
 - Search, set, and collection dropdown menus now use Radix UI primitives for accessible select/dropdown behavior while keeping Cardkeeper's existing visual styling.
 - Set detail sort changes now update the URL with `window.history.replaceState` instead of triggering a Next route navigation, avoiding duplicate set-page reloads and dropdown remounts after quick sort changes.
 - Search result sort changes now refresh the card grid through the cards API and update the URL with `window.history.replaceState`, keeping the result heading/count and sort dropdown mounted while sorted cards load. The redundant "Showing x of x" line was removed from search results.
+- Follow-up implemented on July 5, 2026: TCGCSV price matching now handles additional supplemental mappings and card-number quirks, including Aquapolis `a`/`b` variants, SM Base unnumbered 2017 energies, Base Machamp via Deck Exclusives, League & Championship placement variants, and additional Alternate Art Promo aliases for Flashfire, Roaring Skies, and Shining Legends.
+- Multiple TCGCSV products that collapse to one local card/printing are now averaged instead of whichever product was processed last winning arbitrarily.
+- Current TCGCSV-backed card-level coverage is now 20,290 / 20,329 cards, or about 99.81%, excluding the known no-coverage sets `fut20` Pokemon Futsal Collection and `mcd21` McDonald's Collection 2021.
+- Remaining gaps are intentionally left for a later audit to distinguish cards that still need mapping work from TCGCSV products that exist but have no price rows. Confirmed product-without-price-row examples include Team Up `Pokemon Communication #152a`, DP Black Star Promos `Tropical Wind #DP05`, and Nintendo Black Star Promos `Tropical Tidal Wave #36`.
 
 Operational notes:
 
@@ -215,7 +219,8 @@ Recommended additions:
 
 1. Revisit eBay listing cards after developer approval and keep outbound search links as fallback.
 2. Add signup happy-path coverage once test-user lifecycle and email confirmation handling are finalized.
-3. Add unpriced-status filtering now that collection valuation reads from `current_prices`.
+3. Audit the remaining no-price cards to separate missing TCGCSV mappings from TCGCSV products that have no price rows.
+4. Add unpriced-status filtering now that collection valuation reads from `current_prices`.
 
 ## Next Session Starting Point
 
@@ -223,6 +228,7 @@ Next product pass:
 
 - Browser smoke coverage is in place for public search, card detail, anonymous collection redirect, seeded login, collection page access, authenticated add/update/remove route flows, and collection filter/sort controls.
 - Price history UI is in place using populated `price_points`.
+- TCGCSV price coverage is about 99.81% excluding `fut20` and `mcd21`; next pricing work is a focused audit of the remaining no-price cards.
 - Keep signup happy-path coverage pending until test-user lifecycle and email confirmation handling are finalized.
 - Verify with:
 
