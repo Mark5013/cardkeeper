@@ -200,6 +200,7 @@ Status:
 
 - Implemented stale-copy cleanup on July 3, 2026. Updated homepage milestone/intro copy, empty collection guidance, and README feature/setup/check descriptions to match local catalog search, connected collection persistence, infinite scroll, set browsing, and the catalog search regression script.
 - Implemented collection navigation loading feedback on July 3, 2026 with a static route-level skeleton for `/collection`.
+- Implemented `/sets` page filtering on July 5, 2026. The set browser now includes a client-side search input that filters the already-loaded local set list by set name, series, set id, and release year/date while preserving collection progress counts.
 
 ## Testing And Observability
 
