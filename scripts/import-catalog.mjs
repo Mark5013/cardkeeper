@@ -412,6 +412,7 @@ async function upsertSetsFromCards(cards) {
       printedTotal: card.set.printedTotal ?? null,
       total: card.set.total ?? null,
       releaseDate: card.set.releaseDate ?? null,
+      updatedAt: card.set.updatedAt ?? null,
       images: card.set.images,
     });
   }
@@ -422,6 +423,7 @@ async function upsertSetsFromCards(cards) {
 async function upsertSets(sets) {
   if (sets.length === 0) return;
 
+  const now = new Date();
   const rows = sets.map((set) => ({
     provider_id: set.id,
     language_code: "en",
@@ -430,9 +432,11 @@ async function upsertSets(sets) {
     printed_total: set.printedTotal ?? null,
     total: set.total ?? null,
     release_date: set.releaseDate ?? null,
+    provider_updated_at: toTimestampOrNull(set.updatedAt),
+    last_imported_at: now,
     symbol_url: set.images?.symbol ?? null,
     logo_url: set.images?.logo ?? null,
-    updated_at: new Date(),
+    updated_at: now,
   }));
 
   for (const batch of chunk(rows, WRITE_BATCH_SIZE)) {
@@ -446,6 +450,8 @@ async function upsertSets(sets) {
         "printed_total",
         "total",
         "release_date",
+        "provider_updated_at",
+        "last_imported_at",
         "symbol_url",
         "logo_url",
         "updated_at",
@@ -456,6 +462,8 @@ async function upsertSets(sets) {
         printed_total = excluded.printed_total,
         total = excluded.total,
         release_date = excluded.release_date,
+        provider_updated_at = excluded.provider_updated_at,
+        last_imported_at = excluded.last_imported_at,
         symbol_url = excluded.symbol_url,
         logo_url = excluded.logo_url,
         updated_at = excluded.updated_at
@@ -494,6 +502,7 @@ async function upsertCards(cards) {
       artist: card.artist ?? null,
       image_small_url: card.images?.small ?? null,
       image_large_url: card.images?.large ?? null,
+      last_imported_at: now,
       provider_data: sql.json(card),
       updated_at: now,
     };
@@ -514,6 +523,7 @@ async function upsertCards(cards) {
         "artist",
         "image_small_url",
         "image_large_url",
+        "last_imported_at",
         "provider_data",
         "updated_at",
       )}
@@ -527,10 +537,21 @@ async function upsertCards(cards) {
         artist = excluded.artist,
         image_small_url = excluded.image_small_url,
         image_large_url = excluded.image_large_url,
+        last_imported_at = excluded.last_imported_at,
         provider_data = excluded.provider_data,
         updated_at = excluded.updated_at
     `;
   }
+}
+
+function toTimestampOrNull(value) {
+  if (!value) return null;
+
+  const parsed = new Date(value);
+
+  if (Number.isNaN(parsed.getTime())) return null;
+
+  return parsed;
 }
 
 function chunk(items, size) {

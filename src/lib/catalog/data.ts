@@ -57,7 +57,7 @@ function mapSet(row: typeof cardSets.$inferSelect): PokemonTcgSet {
     printedTotal: row.printedTotal ?? row.total ?? 0,
     total: row.total ?? row.printedTotal ?? 0,
     releaseDate: row.releaseDate ?? "",
-    updatedAt: row.updatedAt.toISOString(),
+    updatedAt: (row.providerUpdatedAt ?? row.updatedAt).toISOString(),
     images:
       row.symbolUrl || row.logoUrl
         ? {

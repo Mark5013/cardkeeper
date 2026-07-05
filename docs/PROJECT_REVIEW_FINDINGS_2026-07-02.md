@@ -152,13 +152,15 @@ Implemented:
 - Added migration `drizzle/0004_catalog_import_runs.sql` and schema model `catalogImportRuns` for catalog import operational history.
 - Catalog imports now create a run record before provider reads, then mark the run `succeeded` or `failed` with mode, options, processed set/card counts, duration, and error details.
 - The import-run table is private operational data: RLS is enabled and no anon/authenticated grants are added.
+- Added migration `drizzle/0005_catalog_row_freshness.sql` with `last_imported_at` on `card_sets` and `cards`, plus `provider_updated_at` on `card_sets` where the Pokemon TCG API exposes a set timestamp.
+- Catalog import and on-demand card sync paths now stamp row-level freshness fields when they upsert local catalog rows.
 
 The importer is capable and has useful resume/missing-only modes (`scripts/import-catalog.mjs:47-61`, `scripts/import-catalog.mjs:233-241`), but the catalog has no import run metadata, active/deleted marker, or reconciliation history. Cards are upserted with full `provider_data` (`scripts/import-catalog.mjs:384-449`), which is good for snapshots but makes it harder to answer "when was this card last verified?"
 
 Recommended direction:
 
 - Implemented: add a `catalog_import_runs` table or equivalent metadata log.
-- Store `last_imported_at` or `provider_updated_at` on sets/cards.
+- Implemented: store `last_imported_at` on sets/cards and `provider_updated_at` on sets.
 - Add an `is_active` flag or tombstone strategy for cards removed or no longer returned by the provider.
 - Make the missing-only check part of an operational checklist or CI/manual release checklist.
 

@@ -69,6 +69,7 @@ export type PokemonTcgCard = {
     printedTotal?: number;
     total?: number;
     releaseDate?: string;
+    updatedAt?: string;
     images?: {
       symbol: string;
       logo: string;

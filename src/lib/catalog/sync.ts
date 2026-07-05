@@ -11,6 +11,7 @@ export async function ensureCardVariant(input: {
   condition: CardCondition;
 }) {
   const now = new Date();
+  const providerUpdatedAt = parseProviderTimestamp(input.card.set.updatedAt);
 
   return db.transaction(async (transaction) => {
     const [set] = await transaction
@@ -23,6 +24,8 @@ export async function ensureCardVariant(input: {
         printedTotal: input.card.set.printedTotal,
         total: input.card.set.total,
         releaseDate: input.card.set.releaseDate,
+        providerUpdatedAt,
+        lastImportedAt: now,
         symbolUrl: input.card.set.images?.symbol,
         logoUrl: input.card.set.images?.logo,
       })
@@ -34,6 +37,8 @@ export async function ensureCardVariant(input: {
           printedTotal: input.card.set.printedTotal,
           total: input.card.set.total,
           releaseDate: input.card.set.releaseDate,
+          providerUpdatedAt,
+          lastImportedAt: now,
           symbolUrl: input.card.set.images?.symbol,
           logoUrl: input.card.set.images?.logo,
           updatedAt: now,
@@ -55,6 +60,7 @@ export async function ensureCardVariant(input: {
         artist: input.card.artist,
         imageSmallUrl: input.card.images.small,
         imageLargeUrl: input.card.images.large,
+        lastImportedAt: now,
         providerData: input.card as unknown as Record<string, unknown>,
       })
       .onConflictDoUpdate({
@@ -69,6 +75,7 @@ export async function ensureCardVariant(input: {
           artist: input.card.artist,
           imageSmallUrl: input.card.images.small,
           imageLargeUrl: input.card.images.large,
+          lastImportedAt: now,
           providerData: input.card as unknown as Record<string, unknown>,
           updatedAt: now,
         },
@@ -98,4 +105,12 @@ export async function ensureCardVariant(input: {
 
     return variant.id;
   });
+}
+
+function parseProviderTimestamp(value: string | undefined) {
+  if (!value) return null;
+
+  const parsed = new Date(value);
+
+  return Number.isNaN(parsed.getTime()) ? null : parsed;
 }
