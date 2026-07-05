@@ -188,7 +188,7 @@ The project is mostly aligned with Next 16: async params/searchParams are used, 
 
 Recommended improvements:
 
-- Replace deprecated `next/image` `priority` with `preload` on the card detail hero image (`src/app/cards/[id]/page.tsx:118-122`). Next 16 keeps it working, but the local docs mark `priority` as deprecated.
+- Implemented on July 5, 2026: replaced deprecated `next/image` `priority` with `preload` on the card detail hero image.
 - Consider `PageProps` and `RouteContext` helpers after `next typegen` for dynamic pages/routes. Current Promise typing is valid; the helper just reduces drift.
 - Reevaluate blanket `prefetch={false}` over time. It is sensible for large grids (`src/components/card-result-grid.tsx:19`, `src/app/sets/page.tsx:67`), but Next 16 has incremental prefetching, so header and small navigation links may be safe to prefetch again after measuring.
 - Consider splitting public catalog data from user-specific progress on `/sets`. The current `connection()` calls (`src/app/sets/page.tsx:16`, `src/app/sets/[id]/page.tsx:28`) force request-time rendering, which is reasonable now, but public catalog shells may eventually benefit from caching while personal progress stays dynamic.

@@ -129,7 +129,7 @@ export default async function CardDetailPage({ params }: { params: Promise<{ id:
                 src={card.images.large}
                 alt={`${card.name} card from ${card.set.name}`}
                 fill
-                priority
+                preload
                 sizes="(max-width: 1024px) 90vw, 400px"
                 className="object-cover"
               />
