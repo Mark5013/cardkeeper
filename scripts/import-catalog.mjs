@@ -46,6 +46,7 @@ function parseArgs(args) {
     cardsBySet: false,
     missingOnly: false,
     setId: null,
+    reconcileInactive: false,
   };
 
   for (const arg of args) {
@@ -59,6 +60,8 @@ function parseArgs(args) {
       parsed.cardsBySet = true;
     } else if (arg === "--missing-only") {
       parsed.missingOnly = true;
+    } else if (arg === "--reconcile-inactive") {
+      parsed.reconcileInactive = true;
     } else if (arg.startsWith("--page-size=")) {
       const pageSize = parsePositiveInteger(arg.slice("--page-size=".length), "page size");
       parsed.setPageSize = pageSize;
@@ -90,6 +93,10 @@ function parseArgs(args) {
 
   if (parsed.cardsOnly && parsed.setsOnly) {
     throw new Error("Use either --cards-only or --sets-only, not both.");
+  }
+
+  if (parsed.reconcileInactive) {
+    throw new Error("--reconcile-inactive is reserved for a future explicit reconciliation command.");
   }
 
   return parsed;
@@ -201,6 +208,7 @@ function getCatalogImportOptions() {
     startCardPage: options.startCardPage,
     maxRetries: options.maxRetries,
     pageDelayMs: options.pageDelayMs,
+    reconcileInactive: options.reconcileInactive,
   };
 }
 
@@ -434,6 +442,7 @@ async function upsertSets(sets) {
     release_date: set.releaseDate ?? null,
     provider_updated_at: toTimestampOrNull(set.updatedAt),
     last_imported_at: now,
+    is_active: true,
     symbol_url: set.images?.symbol ?? null,
     logo_url: set.images?.logo ?? null,
     updated_at: now,
@@ -452,6 +461,7 @@ async function upsertSets(sets) {
         "release_date",
         "provider_updated_at",
         "last_imported_at",
+        "is_active",
         "symbol_url",
         "logo_url",
         "updated_at",
@@ -464,6 +474,7 @@ async function upsertSets(sets) {
         release_date = excluded.release_date,
         provider_updated_at = excluded.provider_updated_at,
         last_imported_at = excluded.last_imported_at,
+        is_active = excluded.is_active,
         symbol_url = excluded.symbol_url,
         logo_url = excluded.logo_url,
         updated_at = excluded.updated_at
@@ -503,6 +514,7 @@ async function upsertCards(cards) {
       image_small_url: card.images?.small ?? null,
       image_large_url: card.images?.large ?? null,
       last_imported_at: now,
+      is_active: true,
       provider_data: sql.json(card),
       updated_at: now,
     };
@@ -524,6 +536,7 @@ async function upsertCards(cards) {
         "image_small_url",
         "image_large_url",
         "last_imported_at",
+        "is_active",
         "provider_data",
         "updated_at",
       )}
@@ -538,6 +551,7 @@ async function upsertCards(cards) {
         image_small_url = excluded.image_small_url,
         image_large_url = excluded.image_large_url,
         last_imported_at = excluded.last_imported_at,
+        is_active = excluded.is_active,
         provider_data = excluded.provider_data,
         updated_at = excluded.updated_at
     `;

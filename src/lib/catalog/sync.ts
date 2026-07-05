@@ -26,6 +26,7 @@ export async function ensureCardVariant(input: {
         releaseDate: input.card.set.releaseDate,
         providerUpdatedAt,
         lastImportedAt: now,
+        isActive: true,
         symbolUrl: input.card.set.images?.symbol,
         logoUrl: input.card.set.images?.logo,
       })
@@ -39,6 +40,7 @@ export async function ensureCardVariant(input: {
           releaseDate: input.card.set.releaseDate,
           providerUpdatedAt,
           lastImportedAt: now,
+          isActive: true,
           symbolUrl: input.card.set.images?.symbol,
           logoUrl: input.card.set.images?.logo,
           updatedAt: now,
@@ -61,6 +63,7 @@ export async function ensureCardVariant(input: {
         imageSmallUrl: input.card.images.small,
         imageLargeUrl: input.card.images.large,
         lastImportedAt: now,
+        isActive: true,
         providerData: input.card as unknown as Record<string, unknown>,
       })
       .onConflictDoUpdate({
@@ -76,6 +79,7 @@ export async function ensureCardVariant(input: {
           imageSmallUrl: input.card.images.small,
           imageLargeUrl: input.card.images.large,
           lastImportedAt: now,
+          isActive: true,
           providerData: input.card as unknown as Record<string, unknown>,
           updatedAt: now,
         },

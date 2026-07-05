@@ -146,7 +146,7 @@ function localSearchConditions(input: {
   normalizedNumber: string | null;
   strategy: "phrase" | "tokens";
 }) {
-  const conditions = [eq(cards.languageCode, "en")];
+  const conditions = [eq(cards.languageCode, "en"), eq(cards.isActive, true), eq(cardSets.isActive, true)];
 
   if (input.name && input.strategy === "phrase") {
     conditions.push(sql`${normalizedCardNameSql()} like ${`${normalizeSearchText(input.name)}%`}`);
@@ -261,6 +261,8 @@ async function queryLocalClosestMatches(input: {
         : relevanceOrderBy;
   const whereClosest = and(
     eq(cards.languageCode, "en"),
+    eq(cards.isActive, true),
+    eq(cardSets.isActive, true),
     input.normalizedNumber ? sql`lower(${cards.number}) = ${input.normalizedNumber}` : undefined,
     sql`${normalizedCardNameSql()} % ${normalizedName}`,
   );
@@ -413,7 +415,7 @@ export const getCatalogPokemonSets = cache(async () => {
     const localSets = await db
       .select()
       .from(cardSets)
-      .where(eq(cardSets.languageCode, "en"))
+      .where(and(eq(cardSets.languageCode, "en"), eq(cardSets.isActive, true)))
       .orderBy(sql`${cardSets.releaseDate} desc nulls last`, asc(cardSets.name));
 
     if (localSets.length > 0) {
@@ -431,7 +433,7 @@ export const getCatalogPokemonSet = cache(async (id: string) => {
     const [localSet] = await db
       .select()
       .from(cardSets)
-      .where(and(eq(cardSets.providerId, id), eq(cardSets.languageCode, "en")))
+      .where(and(eq(cardSets.providerId, id), eq(cardSets.languageCode, "en"), eq(cardSets.isActive, true)))
       .limit(1);
 
     if (localSet) {
@@ -456,7 +458,12 @@ export const getCatalogPokemonCardsBySetPage = cache(async (input: {
   const offset = (page - 1) * pageSize;
 
   try {
-    const whereSet = and(eq(cardSets.providerId, input.setId), eq(cards.languageCode, "en"));
+    const whereSet = and(
+      eq(cardSets.providerId, input.setId),
+      eq(cards.languageCode, "en"),
+      eq(cards.isActive, true),
+      eq(cardSets.isActive, true),
+    );
     const currentMarketPriceByCard = currentMarketPriceByCardSubquery();
     const tieBreakSort = [getCardNumberOrderSql(), asc(cards.number), asc(cards.name), asc(cards.providerId)];
     const orderBy =
@@ -528,7 +535,7 @@ export const getCatalogPokemonCard = cache(async (id: string) => {
     const [localCard] = await db
       .select()
       .from(cards)
-      .where(and(eq(cards.providerId, id), eq(cards.languageCode, "en")))
+      .where(and(eq(cards.providerId, id), eq(cards.languageCode, "en"), eq(cards.isActive, true)))
       .limit(1);
 
     if (localCard) {

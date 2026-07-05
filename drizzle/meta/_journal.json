@@ -43,6 +43,13 @@
       "when": 1783269000000,
       "tag": "0005_catalog_row_freshness",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1783270800000,
+      "tag": "0006_catalog_active_flags",
+      "breakpoints": true
     }
   ]
 }

@@ -1,6 +1,7 @@
 import { sql } from "drizzle-orm";
 import {
   bigint,
+  boolean,
   check,
   date,
   index,
@@ -39,6 +40,7 @@ export const cardSets = pgTable(
     releaseDate: date("release_date"),
     providerUpdatedAt: timestamp("provider_updated_at", { withTimezone: true }),
     lastImportedAt: timestamp("last_imported_at", { withTimezone: true }),
+    isActive: boolean("is_active").default(true).notNull(),
     symbolUrl: text("symbol_url"),
     logoUrl: text("logo_url"),
     ...timestamps,
@@ -46,6 +48,7 @@ export const cardSets = pgTable(
   (table) => [
     uniqueIndex("card_sets_provider_language_idx").on(table.providerId, table.languageCode),
     index("card_sets_name_idx").on(table.name),
+    index("card_sets_active_idx").on(table.isActive),
   ],
 );
 
@@ -67,6 +70,7 @@ export const cards = pgTable(
     imageSmallUrl: text("image_small_url"),
     imageLargeUrl: text("image_large_url"),
     lastImportedAt: timestamp("last_imported_at", { withTimezone: true }),
+    isActive: boolean("is_active").default(true).notNull(),
     providerData: jsonb("provider_data").$type<Record<string, unknown>>(),
     ...timestamps,
   },
@@ -75,6 +79,7 @@ export const cards = pgTable(
     index("cards_name_idx").on(table.name),
     index("cards_number_idx").on(table.number),
     index("cards_set_idx").on(table.setId),
+    index("cards_active_idx").on(table.isActive),
   ],
 );
 
