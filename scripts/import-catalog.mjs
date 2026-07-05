@@ -47,6 +47,8 @@ function parseArgs(args) {
     missingOnly: false,
     setId: null,
     reconcileInactive: false,
+    sourceRef: null,
+    skipIfSourceRefCurrent: false,
   };
 
   for (const arg of args) {
@@ -62,6 +64,8 @@ function parseArgs(args) {
       parsed.missingOnly = true;
     } else if (arg === "--reconcile-inactive") {
       parsed.reconcileInactive = true;
+    } else if (arg === "--skip-if-source-ref-current") {
+      parsed.skipIfSourceRefCurrent = true;
     } else if (arg.startsWith("--page-size=")) {
       const pageSize = parsePositiveInteger(arg.slice("--page-size=".length), "page size");
       parsed.setPageSize = pageSize;
@@ -86,6 +90,8 @@ function parseArgs(args) {
       parsed.pageDelayMs = parsePositiveInteger(arg.slice("--page-delay-ms=".length), "page delay");
     } else if (arg.startsWith("--set-id=")) {
       parsed.setId = arg.slice("--set-id=".length).trim() || null;
+    } else if (arg.startsWith("--source-ref=")) {
+      parsed.sourceRef = arg.slice("--source-ref=".length).trim() || null;
     } else {
       throw new Error(`Unknown argument: ${arg}`);
     }
@@ -97,6 +103,10 @@ function parseArgs(args) {
 
   if (parsed.reconcileInactive) {
     throw new Error("--reconcile-inactive is reserved for a future explicit reconciliation command.");
+  }
+
+  if (parsed.skipIfSourceRefCurrent && !parsed.sourceRef) {
+    throw new Error("--skip-if-source-ref-current requires --source-ref.");
   }
 
   return parsed;
@@ -118,6 +128,12 @@ async function importCatalog() {
     setCount: 0,
     cardCount: 0,
   };
+
+  if (options.skipIfSourceRefCurrent && (await hasSuccessfulCatalogImportForSourceRef(options.sourceRef))) {
+    console.log(`Skipping catalog import. Source ref ${options.sourceRef} was already imported successfully.`);
+    return;
+  }
+
   const runId = await createCatalogImportRun();
 
   console.log(
@@ -209,7 +225,21 @@ function getCatalogImportOptions() {
     maxRetries: options.maxRetries,
     pageDelayMs: options.pageDelayMs,
     reconcileInactive: options.reconcileInactive,
+    sourceRef: options.sourceRef,
+    skipIfSourceRefCurrent: options.skipIfSourceRefCurrent,
   };
+}
+
+async function hasSuccessfulCatalogImportForSourceRef(sourceRef) {
+  const [row] = await sql`
+    select id
+    from catalog_import_runs
+    where status = 'succeeded'
+      and options ->> 'sourceRef' = ${sourceRef}
+    limit 1
+  `;
+
+  return Boolean(row);
 }
 
 function getErrorMessage(error) {

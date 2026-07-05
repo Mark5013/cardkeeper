@@ -156,6 +156,8 @@ Implemented:
 - Catalog import and on-demand card sync paths now stamp row-level freshness fields when they upsert local catalog rows.
 - Added migration `drizzle/0006_catalog_active_flags.sql` with `is_active` tombstone flags on `card_sets` and `cards`.
 - Normal catalog imports and on-demand card syncs mark seen rows active, while public catalog search/set/card reads filter to active rows. Marking missing rows inactive is intentionally reserved for a future explicit reconciliation command rather than normal new-set imports.
+- Added `.github/workflows/import-catalog.yml`, which polls the upstream `PokemonTCG/pokemon-tcg-data` repository daily, records the latest upstream commit SHA in the catalog import run options, and runs the sets plus `--cards-by-set --missing-only` import only when that upstream SHA has not already imported successfully.
+- The first scheduled catalog workflow run after deployment will import once to seed the upstream SHA in `catalog_import_runs`; later runs skip until the upstream data repo commit changes.
 
 The importer is capable and has useful resume/missing-only modes (`scripts/import-catalog.mjs:47-61`, `scripts/import-catalog.mjs:233-241`), but the catalog has no import run metadata, active/deleted marker, or reconciliation history. Cards are upserted with full `provider_data` (`scripts/import-catalog.mjs:384-449`), which is good for snapshots but makes it harder to answer "when was this card last verified?"
 
@@ -164,7 +166,7 @@ Recommended direction:
 - Implemented: add a `catalog_import_runs` table or equivalent metadata log.
 - Implemented: store `last_imported_at` on sets/cards and `provider_updated_at` on sets.
 - Implemented foundation: add an `is_active` flag/tombstone strategy for cards removed or no longer returned by the provider. Still pending: build the explicit reconciliation command that marks missing rows inactive after a deliberate full comparison.
-- Make the missing-only check part of an operational checklist or CI/manual release checklist.
+- Implemented: make the missing-only check part of an operational checklist or CI/manual release checklist through the scheduled upstream commit polling workflow.
 
 ## Security And Production Hardening
 
