@@ -2,13 +2,13 @@
 
 import Image from "next/image";
 import Link from "next/link";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 import type { PokemonTcgSet } from "@/lib/pokemon-tcg/types";
 
 type SetsBrowserProps = {
   sets: PokemonTcgSet[];
-  collectionProgress: Record<string, number> | null;
+  collectionProgress?: Record<string, number> | null;
 };
 
 function normalizeSearchText(value: string) {
@@ -32,11 +32,42 @@ function setMatchesQuery(set: PokemonTcgSet, normalizedQuery: string) {
 
 export function SetsBrowser({ sets, collectionProgress }: SetsBrowserProps) {
   const [query, setQuery] = useState("");
+  const [currentCollectionProgress, setCurrentCollectionProgress] = useState(collectionProgress);
   const normalizedQuery = normalizeSearchText(query);
   const filteredSets = useMemo(
     () => sets.filter((set) => setMatchesQuery(set, normalizedQuery)),
     [normalizedQuery, sets],
   );
+
+  useEffect(() => {
+    if (collectionProgress !== undefined) {
+      return;
+    }
+
+    let active = true;
+
+    async function loadCollectionProgress() {
+      try {
+        const response = await fetch("/api/sets/progress", {
+          cache: "no-store",
+          credentials: "same-origin",
+        });
+
+        if (!response.ok) return;
+
+        const data = (await response.json()) as { progress: Record<string, number> | null };
+        if (active) setCurrentCollectionProgress(data.progress);
+      } catch {
+        if (active) setCurrentCollectionProgress(null);
+      }
+    }
+
+    void loadCollectionProgress();
+
+    return () => {
+      active = false;
+    };
+  }, [collectionProgress]);
 
   return (
     <section className="mt-10">
@@ -83,9 +114,9 @@ export function SetsBrowser({ sets, collectionProgress }: SetsBrowserProps) {
               <div className="mt-5 flex flex-wrap gap-x-4 gap-y-1 text-sm text-[var(--muted)]">
                 <span>{set.total.toLocaleString()} cards</span>
                 <span>{set.releaseDate}</span>
-                {collectionProgress ? (
+                {currentCollectionProgress ? (
                   <span className="font-semibold text-[var(--secondary)]">
-                    {(collectionProgress[set.id] ?? 0).toLocaleString()} / {set.total.toLocaleString()} owned
+                    {(currentCollectionProgress[set.id] ?? 0).toLocaleString()} / {set.total.toLocaleString()} owned
                   </span>
                 ) : null}
               </div>

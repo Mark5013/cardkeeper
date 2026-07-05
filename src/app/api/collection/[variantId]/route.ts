@@ -12,13 +12,11 @@ const quantitySchema = z.object({
   quantity: z.number().int().min(1).max(9999),
 });
 
-type RouteContext = { params: Promise<{ variantId: string }> };
-
 function mutationHeaders() {
   return { "Cache-Control": "private, no-store" };
 }
 
-export async function PUT(request: Request, context: RouteContext) {
+export async function PUT(request: Request, context: RouteContext<"/api/collection/[variantId]">) {
   if (!isSameOriginRequest(request)) {
     return NextResponse.json(
       { error: "Cross-origin collection changes are not allowed." },
@@ -114,7 +112,7 @@ export async function PUT(request: Request, context: RouteContext) {
   );
 }
 
-export async function DELETE(request: Request, context: RouteContext) {
+export async function DELETE(request: Request, context: RouteContext<"/api/collection/[variantId]">) {
   if (!isSameOriginRequest(request)) {
     return NextResponse.json(
       { error: "Cross-origin collection changes are not allowed." },

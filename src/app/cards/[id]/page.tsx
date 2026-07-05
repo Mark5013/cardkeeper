@@ -99,9 +99,7 @@ function PriceRow({ name, price }: { name: string; price: PokemonTcgPrice }) {
 
 export async function generateMetadata({
   params,
-}: {
-  params: Promise<{ id: string }>;
-}): Promise<Metadata> {
+}: PageProps<"/cards/[id]">): Promise<Metadata> {
   const { id } = await params;
   const card = await getCatalogPokemonCard(id);
 
@@ -113,7 +111,7 @@ export async function generateMetadata({
   };
 }
 
-export default async function CardDetailPage({ params }: { params: Promise<{ id: string }> }) {
+export default async function CardDetailPage({ params }: PageProps<"/cards/[id]">) {
   const { id } = await params;
   const card = await getCatalogPokemonCard(id);
 

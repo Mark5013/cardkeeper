@@ -2,7 +2,6 @@ import type { Metadata } from "next";
 import Image from "next/image";
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { connection } from "next/server";
 
 import { SetCardsBrowser } from "@/components/set-cards-browser";
 import { SiteHeader } from "@/components/site-header";
@@ -11,9 +10,7 @@ import { normalizeSetCardSort } from "@/lib/catalog/set-card-sort";
 
 export async function generateMetadata({
   params,
-}: {
-  params: Promise<{ id: string }>;
-}): Promise<Metadata> {
+}: PageProps<"/sets/[id]">): Promise<Metadata> {
   const { id } = await params;
   const set = await getCatalogPokemonSet(id);
 
@@ -28,12 +25,7 @@ export async function generateMetadata({
 export default async function SetDetailPage({
   params,
   searchParams,
-}: {
-  params: Promise<{ id: string }>;
-  searchParams: Promise<{ sort?: string | string[] }>;
-}) {
-  await connection();
-
+}: PageProps<"/sets/[id]">) {
   const { id } = await params;
   const resolvedSearchParams = await searchParams;
   const rawSort = Array.isArray(resolvedSearchParams.sort)

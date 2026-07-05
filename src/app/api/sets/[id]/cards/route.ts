@@ -12,9 +12,7 @@ const setCardsSchema = z.object({
   sort: z.string().optional(),
 });
 
-type RouteContext = { params: Promise<{ id: string }> };
-
-export async function GET(request: Request, context: RouteContext) {
+export async function GET(request: Request, context: RouteContext<"/api/sets/[id]/cards">) {
   const limitedResponse = await rateLimitRequest(request, {
     keyPrefix: "api:set-cards",
     limit: 120,

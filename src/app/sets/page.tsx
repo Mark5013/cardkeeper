@@ -1,11 +1,10 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { connection } from "next/server";
 
 import { SetsBrowser } from "@/components/sets-browser";
 import { SiteHeader } from "@/components/site-header";
 import { getCatalogPokemonSets } from "@/lib/catalog/data";
-import { getCurrentSetCollectionProgress } from "@/lib/collection/data";
+import type { PokemonTcgSet } from "@/lib/pokemon-tcg/types";
 
 export const metadata: Metadata = {
   title: "Search by set",
@@ -13,24 +12,14 @@ export const metadata: Metadata = {
 };
 
 export default async function SetsPage() {
-  await connection();
+  let sets: PokemonTcgSet[] | null = null;
+  let unavailable = false;
 
-  const [setsResult, collectionProgressResult] = await Promise.allSettled([
-    getCatalogPokemonSets(),
-    getCurrentSetCollectionProgress(),
-  ]);
-  const sets = setsResult.status === "fulfilled" ? setsResult.value : null;
-  const collectionProgress =
-    collectionProgressResult.status === "fulfilled" ? collectionProgressResult.value : null;
-  const collectionProgressBySet = collectionProgress ? Object.fromEntries(collectionProgress) : null;
-  const unavailable = setsResult.status === "rejected";
-
-  if (setsResult.status === "rejected") {
-    console.error("Set catalog page failed", setsResult.reason);
-  }
-
-  if (collectionProgressResult.status === "rejected") {
-    console.error("Set collection progress failed", collectionProgressResult.reason);
+  try {
+    sets = await getCatalogPokemonSets();
+  } catch (error) {
+    unavailable = true;
+    console.error("Set catalog page failed", error);
   }
 
   return (
@@ -58,7 +47,7 @@ export default async function SetsPage() {
           </div>
         ) : null}
 
-        {sets ? <SetsBrowser sets={sets} collectionProgress={collectionProgressBySet} /> : null}
+        {sets ? <SetsBrowser sets={sets} /> : null}
       </section>
     </main>
   );
