@@ -8,8 +8,20 @@ const collectionPageSchema = z.object({
   pageSize: z.coerce.number().int().min(1).max(60).default(24),
   query: z.string().trim().max(100).optional().default(""),
   setIds: z.string().trim().max(2000).optional().default(""),
+  printings: z.string().trim().max(1000).optional().default(""),
+  conditions: z.string().trim().max(1000).optional().default(""),
+  minPrice: z.coerce.number().min(0).max(100000).optional(),
+  maxPrice: z.coerce.number().min(0).max(100000).optional(),
   sort: z.string().optional(),
 });
+
+function parseCommaList(value: string, limit: number) {
+  return value
+    .split(",")
+    .map((item) => item.trim())
+    .filter(Boolean)
+    .slice(0, limit);
+}
 
 export async function GET(request: Request) {
   const url = new URL(request.url);
@@ -24,11 +36,11 @@ export async function GET(request: Request) {
       page: parsed.data.page,
       pageSize: parsed.data.pageSize,
       query: parsed.data.query,
-      setIds: parsed.data.setIds
-        .split(",")
-        .map((setId) => setId.trim())
-        .filter(Boolean)
-        .slice(0, 100),
+      setIds: parseCommaList(parsed.data.setIds, 100),
+      printings: parseCommaList(parsed.data.printings, 50),
+      conditions: parseCommaList(parsed.data.conditions, 20),
+      minPriceUsd: parsed.data.minPrice,
+      maxPriceUsd: parsed.data.maxPrice,
       sort: normalizeCollectionSort(parsed.data.sort),
     });
 

@@ -28,6 +28,10 @@ type CollectionPageInput = {
   pageSize?: number;
   query?: string;
   setIds?: string[];
+  printings?: string[];
+  conditions?: string[];
+  minPriceUsd?: number;
+  maxPriceUsd?: number;
   sort?: CollectionSortOption;
 };
 
@@ -142,6 +146,19 @@ export async function getCurrentCollection(
   const { page, pageSize } = normalizeCollectionPage(input);
   const filterText = normalizeCollectionFilterText(input?.query);
   const setIds = input?.setIds?.filter(Boolean) ?? [];
+  const printings = input?.printings?.filter(Boolean) ?? [];
+  const conditionsFilter = input?.conditions?.filter(Boolean) ?? [];
+  const minPriceUsd = typeof input?.minPriceUsd === "number" ? input.minPriceUsd : null;
+  const maxPriceUsd = typeof input?.maxPriceUsd === "number" ? input.maxPriceUsd : null;
+  const hasPriceRange = minPriceUsd !== null || maxPriceUsd !== null;
+  const priceLowerBound =
+    minPriceUsd !== null && maxPriceUsd !== null
+      ? Math.min(minPriceUsd, maxPriceUsd)
+      : minPriceUsd;
+  const priceUpperBound =
+    minPriceUsd !== null && maxPriceUsd !== null
+      ? Math.max(minPriceUsd, maxPriceUsd)
+      : maxPriceUsd;
   const sort = input?.sort ?? "created-desc";
   const conditions = [eq(collectionItems.userId, user.id)];
 
@@ -158,6 +175,14 @@ export async function getCurrentCollection(
 
   if (setIds.length > 0) {
     conditions.push(inArray(cardSets.providerId, setIds));
+  }
+
+  if (printings.length > 0) {
+    conditions.push(inArray(cardVariants.printing, printings));
+  }
+
+  if (conditionsFilter.length > 0) {
+    conditions.push(inArray(cardVariants.condition, conditionsFilter));
   }
 
   const whereCollection = and(...conditions);
@@ -225,9 +250,18 @@ export async function getCurrentCollection(
     };
   });
 
+  const priceFilteredItems = hasPriceRange
+    ? allItems.filter(
+        (item) =>
+          item.unitPriceUsd !== null &&
+          (priceLowerBound === null || item.unitPriceUsd >= priceLowerBound) &&
+          (priceUpperBound === null || item.unitPriceUsd <= priceUpperBound),
+      )
+    : allItems;
+
   const sortedItems =
     sort === "price-desc" || sort === "price-asc"
-      ? [...allItems].sort((left, right) => {
+      ? [...priceFilteredItems].sort((left, right) => {
           if (left.unitPriceUsd === null && right.unitPriceUsd === null) {
             return left.cardName.localeCompare(right.cardName, "en", { sensitivity: "base" });
           }
@@ -238,7 +272,7 @@ export async function getCurrentCollection(
           if (priceDelta !== 0) return sort === "price-asc" ? priceDelta : -priceDelta;
           return left.cardName.localeCompare(right.cardName, "en", { sensitivity: "base" });
         })
-      : allItems;
+      : priceFilteredItems;
 
   const totalItems = sortedItems.length;
   const effectivePageSize = pageSize ?? Math.max(totalItems, DEFAULT_COLLECTION_PAGE_SIZE);

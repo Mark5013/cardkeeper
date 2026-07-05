@@ -2,14 +2,17 @@
 
 import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
 import { useRouter } from "next/navigation";
+import type { ReactNode } from "react";
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import { CollectionCardGrid } from "@/components/collection/collection-card-grid";
+import { CARD_CONDITIONS } from "@/lib/collection/options";
 import type { CollectionSummaryDto } from "@/lib/collection/types";
 import type { CollectionItemDto } from "@/lib/collection/types";
 
 type CollectionSortOption = "created-desc" | "created-asc" | "price-desc" | "price-asc";
 type CollectionSetOption = { id: string; name: string };
+type CollectionFilterOption = { id: string; name: string };
 
 const SORT_OPTIONS: { value: CollectionSortOption; label: string }[] = [
   { value: "created-desc", label: "Newest added" },
@@ -18,6 +21,51 @@ const SORT_OPTIONS: { value: CollectionSortOption; label: string }[] = [
   { value: "price-asc", label: "Card price: low to high" },
 ];
 
+function getConditionLabel(condition: string) {
+  return CARD_CONDITIONS.find((option) => option.value === condition)?.label ?? condition;
+}
+
+function normalizePriceInput(value: string) {
+  if (value.trim() === "") return "";
+
+  const price = Number(value);
+  if (!Number.isFinite(price)) return value;
+  if (price < 0) return "0";
+
+  return value;
+}
+
+function FilterSection({ children, title }: { children: ReactNode; title: string }) {
+  return (
+    <section className="collection-filter-section">
+      <h4 className="text-sm font-bold">{title}</h4>
+      <div className="mt-3 space-y-2">{children}</div>
+    </section>
+  );
+}
+
+function FilterCheckbox({
+  checked,
+  label,
+  onChange,
+}: {
+  checked: boolean;
+  label: string;
+  onChange: () => void;
+}) {
+  return (
+    <label className="collection-filter-checkbox">
+      <input
+        className="collection-set-checkbox"
+        type="checkbox"
+        checked={checked}
+        onChange={onChange}
+      />
+      <span>{label}</span>
+    </label>
+  );
+}
+
 export function CollectionBrowser({
   initialItems,
   setOptions,
@@ -25,6 +73,8 @@ export function CollectionBrowser({
   pageSize,
   totalItems,
   initialHasNextPage,
+  finishOptions,
+  conditionOptions,
 }: {
   initialItems: CollectionItemDto[];
   setOptions: CollectionSetOption[];
@@ -32,12 +82,21 @@ export function CollectionBrowser({
   pageSize: number;
   totalItems: number;
   initialHasNextPage: boolean;
+  finishOptions: CollectionFilterOption[];
+  conditionOptions: CollectionFilterOption[];
 }) {
   const router = useRouter();
   const [items, setItems] = useState(initialItems);
   const [sort, setSort] = useState<CollectionSortOption>("created-desc");
   const [query, setQuery] = useState("");
   const [selectedSetIds, setSelectedSetIds] = useState<string[]>([]);
+  const [selectedPrintings, setSelectedPrintings] = useState<string[]>([]);
+  const [selectedConditions, setSelectedConditions] = useState<string[]>([]);
+  const [minPrice, setMinPrice] = useState("");
+  const [maxPrice, setMaxPrice] = useState("");
+  const [showAllSets, setShowAllSets] = useState(false);
+  const [setFilterQuery, setSetFilterQuery] = useState("");
+  const [isFilterPanelOpen, setIsFilterPanelOpen] = useState(false);
   const [loadedPage, setLoadedPage] = useState(initialPage);
   const [visibleTotalItems, setVisibleTotalItems] = useState(totalItems);
   const [hasNextPage, setHasNextPage] = useState(initialHasNextPage);
@@ -46,8 +105,37 @@ export function CollectionBrowser({
   const [decrementingVariantIds, setDecrementingVariantIds] = useState<Set<string>>(() => new Set());
   const [loadError, setLoadError] = useState<string | null>(null);
   const hasMountedRef = useRef(false);
+  const resultsContentRef = useRef<HTMLDivElement | null>(null);
+  const [reservedResultsHeight, setReservedResultsHeight] = useState<number | null>(null);
   const selectedOption = SORT_OPTIONS.find((option) => option.value === sort) ?? SORT_OPTIONS[0];
-  const hasActiveFilters = query.trim().length > 0 || selectedSetIds.length > 0;
+  const hasPriceRangeFilter = minPrice.trim().length > 0 || maxPrice.trim().length > 0;
+  const activeCheckboxFilterCount =
+    selectedSetIds.length + selectedPrintings.length + selectedConditions.length;
+  const activeFilterCount = activeCheckboxFilterCount + (hasPriceRangeFilter ? 1 : 0);
+  const hasActiveFilters = query.trim().length > 0 || activeFilterCount > 0;
+  const defaultVisibleSetCount = 12;
+  const trimmedSetFilterQuery = setFilterQuery.trim().toLowerCase();
+  const matchingSetOptions = trimmedSetFilterQuery
+    ? setOptions.filter(
+        (set) =>
+          set.name.toLowerCase().includes(trimmedSetFilterQuery) ||
+          set.id.toLowerCase().includes(trimmedSetFilterQuery),
+      )
+    : setOptions;
+  const defaultSetOptions = matchingSetOptions.slice(0, defaultVisibleSetCount);
+  const visibleSetOptionMap = new Map(
+    (showAllSets || trimmedSetFilterQuery ? matchingSetOptions : defaultSetOptions).map((set) => [set.id, set]),
+  );
+
+  if (!showAllSets && !trimmedSetFilterQuery) {
+    for (const setId of selectedSetIds) {
+      const selectedSet = setOptions.find((set) => set.id === setId);
+      if (selectedSet) visibleSetOptionMap.set(selectedSet.id, selectedSet);
+    }
+  }
+
+  const visibleSetOptions = Array.from(visibleSetOptionMap.values());
+  const hasHiddenSetOptions = matchingSetOptions.length > visibleSetOptions.length;
 
   const buildCollectionParams = useCallback((page: number) => {
     const params = new URLSearchParams({
@@ -59,9 +147,13 @@ export function CollectionBrowser({
 
     if (trimmedQuery) params.set("query", trimmedQuery);
     if (selectedSetIds.length > 0) params.set("setIds", selectedSetIds.join(","));
+    if (selectedPrintings.length > 0) params.set("printings", selectedPrintings.join(","));
+    if (selectedConditions.length > 0) params.set("conditions", selectedConditions.join(","));
+    if (minPrice.trim()) params.set("minPrice", minPrice.trim());
+    if (maxPrice.trim()) params.set("maxPrice", maxPrice.trim());
 
     return params;
-  }, [pageSize, query, selectedSetIds, sort]);
+  }, [maxPrice, minPrice, pageSize, query, selectedConditions, selectedPrintings, selectedSetIds, sort]);
 
   useEffect(() => {
     if (!hasMountedRef.current) {
@@ -71,6 +163,8 @@ export function CollectionBrowser({
 
     const controller = new AbortController();
     const timeout = window.setTimeout(async () => {
+      const resultsHeight = resultsContentRef.current?.getBoundingClientRect().height ?? 0;
+      setReservedResultsHeight(resultsHeight > 0 ? resultsHeight : null);
       setIsRefreshing(true);
       setLoadError(null);
 
@@ -104,16 +198,136 @@ export function CollectionBrowser({
     };
   }, [buildCollectionParams, query]);
 
-  function toggleSet(setId: string) {
-    setSelectedSetIds((current) =>
-      current.includes(setId) ? current.filter((id) => id !== setId) : [...current, setId],
+  useEffect(() => {
+    if (isRefreshing || reservedResultsHeight === null) return;
+
+    const releaseReserve = () => setReservedResultsHeight(null);
+    const frame = window.requestAnimationFrame(() => {
+      const viewportBottom = window.scrollY + window.innerHeight;
+      const pageBottom = document.documentElement.scrollHeight;
+
+      if (pageBottom > viewportBottom + 120) {
+        releaseReserve();
+      }
+    });
+
+    window.addEventListener("wheel", releaseReserve, { once: true });
+    window.addEventListener("touchstart", releaseReserve, { once: true });
+    window.addEventListener("keydown", releaseReserve, { once: true });
+
+    return () => {
+      window.cancelAnimationFrame(frame);
+      window.removeEventListener("wheel", releaseReserve);
+      window.removeEventListener("touchstart", releaseReserve);
+      window.removeEventListener("keydown", releaseReserve);
+    };
+  }, [isRefreshing, reservedResultsHeight]);
+
+  function toggleFilterValue(value: string, updateValues: (updater: (current: string[]) => string[]) => void) {
+    updateValues((current) =>
+      current.includes(value) ? current.filter((item) => item !== value) : [...current, value],
     );
   }
 
   function clearFilters() {
     setQuery("");
     setSelectedSetIds([]);
+    setSelectedPrintings([]);
+    setSelectedConditions([]);
+    setMinPrice("");
+    setMaxPrice("");
   }
+
+  const filterSections = (
+    <>
+      <FilterSection title="Finish">
+        {finishOptions.map((finish) => (
+          <FilterCheckbox
+            checked={selectedPrintings.includes(finish.id)}
+            key={finish.id}
+            label={finish.name}
+            onChange={() => toggleFilterValue(finish.id, setSelectedPrintings)}
+          />
+        ))}
+      </FilterSection>
+
+      <FilterSection title="Condition">
+        {conditionOptions.map((condition) => (
+          <FilterCheckbox
+            checked={selectedConditions.includes(condition.id)}
+            key={condition.id}
+            label={getConditionLabel(condition.id)}
+            onChange={() => toggleFilterValue(condition.id, setSelectedConditions)}
+          />
+        ))}
+      </FilterSection>
+
+      <FilterSection title="Price range">
+        <div className="collection-price-range">
+          <label>
+            <span className="auth-label">Min</span>
+            <input
+              className="auth-input"
+              inputMode="decimal"
+              min="0"
+              step="0.01"
+              type="number"
+              value={minPrice}
+              onChange={(event) => setMinPrice(normalizePriceInput(event.target.value))}
+              placeholder="0.00"
+            />
+          </label>
+          <label>
+            <span className="auth-label">Max</span>
+            <input
+              className="auth-input"
+              inputMode="decimal"
+              min="0"
+              step="0.01"
+              type="number"
+              value={maxPrice}
+              onChange={(event) => setMaxPrice(normalizePriceInput(event.target.value))}
+              placeholder="100.00"
+            />
+          </label>
+        </div>
+      </FilterSection>
+
+      <FilterSection title="Sets">
+        <label className="collection-set-search-field">
+          <span className="sr-only">Search sets</span>
+          <input
+            className="auth-input"
+            type="search"
+            value={setFilterQuery}
+            onChange={(event) => setSetFilterQuery(event.target.value)}
+            placeholder="Search sets"
+          />
+        </label>
+        {visibleSetOptions.length > 0 ? (
+          visibleSetOptions.map((set) => (
+            <FilterCheckbox
+              checked={selectedSetIds.includes(set.id)}
+              key={set.id}
+              label={set.name}
+              onChange={() => toggleFilterValue(set.id, setSelectedSetIds)}
+            />
+          ))
+        ) : (
+          <p className="px-2 py-1 text-sm font-semibold text-[var(--muted)]">No matching sets</p>
+        )}
+        {!trimmedSetFilterQuery && (hasHiddenSetOptions || showAllSets) ? (
+          <button
+            className="collection-filter-text-button"
+            type="button"
+            onClick={() => setShowAllSets((current) => !current)}
+          >
+            {showAllSets ? "Show fewer sets" : `Show all sets (${setOptions.length})`}
+          </button>
+        ) : null}
+      </FilterSection>
+    </>
+  );
 
   async function loadMore() {
     if (isLoadingMore || !hasNextPage) return;
@@ -221,135 +435,175 @@ export function CollectionBrowser({
           <p className="text-sm font-semibold text-[var(--accent)]">Owned cards</p>
           <h2 className="mt-1 text-2xl font-bold">Your binder</h2>
         </div>
-        <div className="flex flex-col gap-3 sm:items-end">
-          <p className="max-w-md text-sm text-[var(--muted)] sm:text-right">
-            Values use general finish-level market prices and do not yet adjust for condition. Unpriced variants sort after priced variants when sorting by price.
-          </p>
-          <DropdownMenu.Root>
-            <DropdownMenu.Trigger className="sort-menu-button" type="button">
-              <span>Sort by: {selectedOption.label}</span>
-              <span className="control-chevron" aria-hidden="true" />
-            </DropdownMenu.Trigger>
-            <DropdownMenu.Portal>
-              <DropdownMenu.Content className="control-menu" align="end" sideOffset={6}>
-                <DropdownMenu.RadioGroup
-                  value={sort}
-                  onValueChange={(value) => setSort(value as CollectionSortOption)}
-                >
-                  {SORT_OPTIONS.map((option) => (
-                    <DropdownMenu.RadioItem
-                      className="control-menu-option"
-                      value={option.value}
-                      key={option.value}
-                    >
-                      {option.label}
-                    </DropdownMenu.RadioItem>
-                  ))}
-                </DropdownMenu.RadioGroup>
-              </DropdownMenu.Content>
-            </DropdownMenu.Portal>
-          </DropdownMenu.Root>
-        </div>
       </div>
 
-      <div className="collection-filter-panel">
-        <div className="collection-filter-grid">
-          <label>
-            <span className="auth-label">Card name</span>
-            <input
-              className="auth-input"
-              type="search"
-              value={query}
-              onChange={(event) => setQuery(event.target.value)}
-              placeholder="Search your cards"
-            />
-          </label>
-
-          <div>
-            <span className="auth-label">Set</span>
-            <DropdownMenu.Root>
-              <DropdownMenu.Trigger className="sort-menu-button collection-filter-button" type="button">
-                <span>{selectedSetIds.length === 0 ? "All sets" : `${selectedSetIds.length} selected`}</span>
-                <span className="control-chevron" aria-hidden="true" />
-              </DropdownMenu.Trigger>
-              <DropdownMenu.Portal>
-                <DropdownMenu.Content className="control-menu collection-set-menu" align="start" sideOffset={6}>
-                  {setOptions.map((set) => {
-                    const isSelected = selectedSetIds.includes(set.id);
-
-                    return (
-                      <DropdownMenu.CheckboxItem
-                        className="control-menu-option collection-set-option"
-                        checked={isSelected}
-                        key={set.id}
-                        onCheckedChange={() => toggleSet(set.id)}
-                        onSelect={(event) => event.preventDefault()}
-                      >
-                        <input
-                          className="collection-set-checkbox"
-                          type="checkbox"
-                          checked={isSelected}
-                          readOnly
-                          tabIndex={-1}
-                          aria-hidden="true"
-                        />
-                        <span>{set.name}</span>
-                      </DropdownMenu.CheckboxItem>
-                    );
-                  })}
-                </DropdownMenu.Content>
-              </DropdownMenu.Portal>
-            </DropdownMenu.Root>
-          </div>
-
-          <div className="collection-filter-actions">
-            <p className="text-sm font-semibold text-[var(--muted)]">
-              Showing {items.length} of {visibleTotalItems} matching
-            </p>
+      <div className="collection-browser-layout">
+        <aside className="collection-filter-sidebar" aria-label="Collection filters">
+          <div className="flex items-start justify-between gap-4 border-b border-[var(--line)] pb-4">
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-[0.14em] text-[var(--accent)]">Filters</p>
+              <h3 className="mt-1 text-lg font-bold">
+                Refine collection{activeFilterCount > 0 ? ` (${activeFilterCount})` : ""}
+              </h3>
+            </div>
             {hasActiveFilters ? (
-              <button type="button" className="collection-clear-button" onClick={clearFilters}>
-                Clear filters
+              <button className="collection-clear-button" type="button" onClick={clearFilters}>
+                Clear
               </button>
             ) : null}
+          </div>
+
+          <div className="collection-filter-sidebar-body">
+            {filterSections}
+          </div>
+        </aside>
+
+        <div className="collection-results-column">
+          <div className="collection-filter-panel">
+            <div className="collection-search-row">
+              <label className="collection-search-field">
+                <span className="auth-label">Card name</span>
+                <input
+                  className="auth-input"
+                  type="search"
+                  value={query}
+                  onChange={(event) => setQuery(event.target.value)}
+                  placeholder="Search your cards"
+                />
+              </label>
+
+              <div className="collection-filter-actions">
+                <button
+                  type="button"
+                  className="sort-menu-button collection-mobile-filter-button"
+                  onClick={() => setIsFilterPanelOpen(true)}
+                >
+                  <span>Filters{activeFilterCount > 0 ? ` (${activeFilterCount})` : ""}</span>
+                  <span className="control-chevron" aria-hidden="true" />
+                </button>
+                <p className="text-sm font-semibold text-[var(--muted)]">
+                  Showing {items.length} of {visibleTotalItems} matching
+                </p>
+                <DropdownMenu.Root>
+                  <DropdownMenu.Trigger className="sort-menu-button collection-sort-button" type="button">
+                    <span>Sort by: {selectedOption.label}</span>
+                    <span className="control-chevron" aria-hidden="true" />
+                  </DropdownMenu.Trigger>
+                  <DropdownMenu.Portal>
+                    <DropdownMenu.Content className="control-menu" align="end" sideOffset={6}>
+                      <DropdownMenu.RadioGroup
+                        value={sort}
+                        onValueChange={(value) => setSort(value as CollectionSortOption)}
+                      >
+                        {SORT_OPTIONS.map((option) => (
+                          <DropdownMenu.RadioItem
+                            className="control-menu-option"
+                            value={option.value}
+                            key={option.value}
+                          >
+                            {option.label}
+                          </DropdownMenu.RadioItem>
+                        ))}
+                      </DropdownMenu.RadioGroup>
+                    </DropdownMenu.Content>
+                  </DropdownMenu.Portal>
+                </DropdownMenu.Root>
+              </div>
+            </div>
+          </div>
+
+          {isFilterPanelOpen ? (
+            <div className="collection-filter-drawer-wrap" role="presentation">
+              <button
+                className="collection-filter-backdrop"
+                type="button"
+                aria-label="Close filters"
+                onClick={() => setIsFilterPanelOpen(false)}
+              />
+              <aside className="collection-filter-drawer" aria-label="Collection filters">
+                <div className="flex items-start justify-between gap-4 border-b border-[var(--line)] pb-4">
+                  <div>
+                    <p className="text-xs font-semibold uppercase tracking-[0.14em] text-[var(--accent)]">Filters</p>
+                    <h3 className="mt-1 text-xl font-bold">
+                      Refine collection{activeFilterCount > 0 ? ` (${activeFilterCount})` : ""}
+                    </h3>
+                  </div>
+                  <button
+                    className="collection-clear-button"
+                    type="button"
+                    onClick={() => setIsFilterPanelOpen(false)}
+                  >
+                    Close
+                  </button>
+                </div>
+
+                <div className="collection-filter-drawer-body">{filterSections}</div>
+
+                <div className="border-t border-[var(--line)] pt-4">
+                  <button
+                    type="button"
+                    className="auth-submit w-full"
+                    onClick={() => setIsFilterPanelOpen(false)}
+                  >
+                    Show results
+                  </button>
+                  {hasActiveFilters ? (
+                    <button
+                      type="button"
+                      className="mt-3 w-full text-sm font-semibold text-[var(--secondary)] hover:underline"
+                      onClick={clearFilters}
+                    >
+                      Clear all filters
+                    </button>
+                  ) : null}
+                </div>
+              </aside>
+            </div>
+          ) : null}
+
+          <div
+            className="collection-results-stack"
+            ref={resultsContentRef}
+            style={reservedResultsHeight === null ? undefined : { minHeight: reservedResultsHeight }}
+          >
+            {items.length > 0 ? (
+              <>
+                <CollectionCardGrid
+                  items={items}
+                  decrementingVariantIds={decrementingVariantIds}
+                  onDecrementItem={decrementItem}
+                />
+                <div className="collection-pagination">
+                  <p className="text-sm font-semibold text-[var(--muted)]">
+                    {isRefreshing ? "Refreshing..." : `Loaded ${items.length} of ${visibleTotalItems}`}
+                  </p>
+                  {loadError ? <p className="text-sm font-semibold text-[var(--danger)]">{loadError}</p> : null}
+                  {hasNextPage ? (
+                    <button
+                      type="button"
+                      className="auth-submit"
+                      disabled={isLoadingMore}
+                      onClick={loadMore}
+                    >
+                      {isLoadingMore ? "Loading..." : "Load more"}
+                    </button>
+                  ) : null}
+                </div>
+              </>
+            ) : (
+              <div className="rounded-lg border border-dashed border-[var(--line)] bg-[var(--surface)] px-6 py-12 text-center">
+                <h3 className="text-xl font-bold">No cards match these filters</h3>
+                <p className="mx-auto mt-2 max-w-md text-sm leading-6 text-[var(--muted)]">
+                  Try a different card name or set.
+                </p>
+                <button type="button" className="mt-5 font-semibold text-[var(--secondary)] hover:underline" onClick={clearFilters}>
+                  Clear filters
+                </button>
+              </div>
+            )}
           </div>
         </div>
       </div>
-
-      {items.length > 0 ? (
-        <>
-          <CollectionCardGrid
-            items={items}
-            decrementingVariantIds={decrementingVariantIds}
-            onDecrementItem={decrementItem}
-          />
-          <div className="collection-pagination">
-            <p className="text-sm font-semibold text-[var(--muted)]">
-              {isRefreshing ? "Refreshing..." : `Loaded ${items.length} of ${visibleTotalItems}`}
-            </p>
-            {loadError ? <p className="text-sm font-semibold text-[var(--danger)]">{loadError}</p> : null}
-            {hasNextPage ? (
-              <button
-                type="button"
-                className="auth-submit"
-                disabled={isLoadingMore}
-                onClick={loadMore}
-              >
-                {isLoadingMore ? "Loading..." : "Load more"}
-              </button>
-            ) : null}
-          </div>
-        </>
-      ) : (
-        <div className="rounded-lg border border-dashed border-[var(--line)] bg-[var(--surface)] px-6 py-12 text-center">
-          <h3 className="text-xl font-bold">No cards match these filters</h3>
-          <p className="mx-auto mt-2 max-w-md text-sm leading-6 text-[var(--muted)]">
-            Try a different card name or set.
-          </p>
-          <button type="button" className="mt-5 font-semibold text-[var(--secondary)] hover:underline" onClick={clearFilters}>
-            Clear filters
-          </button>
-        </div>
-      )}
     </div>
   );
 }

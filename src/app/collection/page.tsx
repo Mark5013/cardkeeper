@@ -6,6 +6,7 @@ import { CollectionBrowser } from "@/components/collection/collection-browser";
 import { SiteHeader } from "@/components/site-header";
 import { getCatalogPokemonSets } from "@/lib/catalog/data";
 import { getCurrentCollection } from "@/lib/collection/data";
+import { formatPrinting } from "@/lib/pokemon-tcg/printing";
 
 export const metadata: Metadata = { title: "My collection" };
 
@@ -23,6 +24,22 @@ export default async function CollectionPage() {
     collection.items.length > 0
       ? (await getCatalogPokemonSets()).map((set) => ({ id: set.id, name: set.name }))
       : [];
+  const finishOptions = Array.from(
+    new Map(
+      collection.items.map((item) => [
+        item.printing,
+        { id: item.printing, name: formatPrinting(item.printing) },
+      ]),
+    ).values(),
+  ).sort((left, right) => left.name.localeCompare(right.name, "en", { sensitivity: "base" }));
+  const conditionOptions = Array.from(
+    new Map(
+      collection.items.map((item) => [
+        item.condition,
+        { id: item.condition, name: item.condition },
+      ]),
+    ).values(),
+  );
 
   return (
     <main className="min-h-screen overflow-x-hidden">
@@ -78,6 +95,8 @@ export default async function CollectionPage() {
             pageSize={collectionPage?.pageSize ?? COLLECTION_PAGE_SIZE}
             totalItems={collectionPage?.totalItems ?? collection.uniqueVariants}
             initialHasNextPage={collectionPage?.hasNextPage ?? false}
+            finishOptions={finishOptions}
+            conditionOptions={conditionOptions}
           />
         )}
       </section>
