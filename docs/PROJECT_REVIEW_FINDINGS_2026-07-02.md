@@ -209,10 +209,11 @@ Recommended improvements:
 
 - Implemented: update stale product copy. The homepage previously described the collection as "Ready to connect" and said search was backed by the Pokemon TCG API (`src/app/page.tsx:7-36`), while the app now has local catalog search and connected collection persistence. The README also said auth and collection persistence were the next milestone (`README.md:27`), which is no longer true.
 - Implemented on July 5, 2026: search results now preserve loaded cards, sort/count metadata, and scroll position in session storage when users open a card and return. A visible "Load more" fallback was intentionally skipped to keep the results UI streamlined. Follow-up: card detail pages now have a route-level loading skeleton for immediate navigation feedback, and search restoration temporarily disables smooth scrolling so the saved scroll position is restored reliably.
-- Implemented on July 5, 2026: collection variant cards now include a small decrement control that removes one copy from the owned variant, deleting the variant row from the collection when quantity reaches zero.
+- Implemented on July 5, 2026: collection variant cards now include a small decrement control that removes one copy from the owned variant, deleting the variant row from the collection when quantity reaches zero. The control now shows an inline loading spinner while the mutation is in flight.
 - Implemented on July 5, 2026: collection filtering now keeps card search above the grid and moves filters into a persistent left-side filter panel on desktop, with a compact overlay filter panel on narrower widths. The panel supports set, finish, condition, and unit-price range filtering, active filter counts, clear actions, set search, and a compact default set list with a show-all toggle. Unpriced-status filtering remains deferred.
+- Implemented on July 5, 2026: collection filter refreshes now keep stale results visible with an updating badge, reserve result height to reduce scroll jumps, and show clearer empty states for filtered-empty versus truly-empty collections.
 - Consider grouping variants of the same card in collection views only after variant-level actions are designed. For now, keeping one tile per owned variant makes future remove/update controls straightforward and avoids hiding condition/finish-specific collection actions inside a linked card tile.
-- Revisit empty collection copy in `src/app/collection/page.tsx`; it still says controls are the next feature even though controls exist.
+- Implemented: empty collection and filtered-empty collection copy now reflects the current collection controls.
 
 Status:
 

@@ -228,6 +228,56 @@ select {
   font-weight: 700;
 }
 
+.collection-card-remove-button {
+  position: absolute;
+  z-index: 10;
+  top: 0.75rem;
+  left: 0.75rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2rem;
+  height: 2rem;
+  border: 1px solid var(--danger);
+  border-radius: 9999px;
+  background: var(--background);
+  color: var(--danger);
+  box-shadow: 0 10px 24px rgb(0 0 0 / 28%);
+  cursor: pointer;
+  transition: background 150ms ease, opacity 150ms ease;
+}
+
+.collection-card-remove-button:hover:not(:disabled) {
+  background: rgb(255 122 138 / 12%);
+}
+
+.collection-card-remove-button:focus-visible {
+  outline: 2px solid var(--danger);
+  outline-offset: 2px;
+}
+
+.collection-card-remove-button:disabled {
+  cursor: wait;
+  opacity: 0.72;
+}
+
+.collection-card-remove-minus {
+  width: 0.75rem;
+  height: 1.5px;
+  margin-top: 1px;
+  border-radius: 9999px;
+  background: currentColor;
+}
+
+.collection-card-remove-spinner {
+  width: 0.9rem;
+  height: 0.9rem;
+  border: 2px solid rgb(255 122 138 / 24%);
+  border-top-color: currentColor;
+  border-radius: 9999px;
+  animation: search-loading-spin 700ms linear infinite;
+}
+
 .detail-section {
   margin-top: 2.5rem;
   border-top: 1px solid var(--line);
@@ -391,7 +441,44 @@ select {
 }
 
 .collection-results-stack {
+  position: relative;
   min-width: 0;
+}
+
+.collection-results-content {
+  transition: opacity 150ms ease, filter 150ms ease;
+}
+
+.collection-results-stack.is-refreshing .collection-results-content {
+  opacity: 0.58;
+  filter: saturate(0.78);
+}
+
+.collection-refresh-status {
+  position: absolute;
+  z-index: 10;
+  top: 0.75rem;
+  right: 0.75rem;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.55rem;
+  border: 1px solid var(--line);
+  border-radius: 9999px;
+  background: rgb(17 21 18 / 92%);
+  padding: 0.55rem 0.75rem;
+  color: var(--ink);
+  font-size: 0.8rem;
+  font-weight: 750;
+  box-shadow: 0 14px 36px var(--shadow);
+  backdrop-filter: blur(10px);
+}
+
+.collection-empty-state {
+  border: 1px solid var(--line);
+  border-radius: 0.75rem;
+  background: rgb(17 21 18 / 72%);
+  padding: 3rem 1.5rem;
+  text-align: center;
 }
 
 .collection-filter-panel {

@@ -562,12 +562,19 @@ export function CollectionBrowser({
           ) : null}
 
           <div
-            className="collection-results-stack"
+            aria-busy={isRefreshing}
+            className={isRefreshing ? "collection-results-stack is-refreshing" : "collection-results-stack"}
             ref={resultsContentRef}
             style={reservedResultsHeight === null ? undefined : { minHeight: reservedResultsHeight }}
           >
+            {isRefreshing ? (
+              <div className="collection-refresh-status" role="status">
+                <span className="search-loading-spinner" aria-hidden="true" />
+                <span>Updating results</span>
+              </div>
+            ) : null}
             {items.length > 0 ? (
-              <>
+              <div className="collection-results-content">
                 <CollectionCardGrid
                   items={items}
                   decrementingVariantIds={decrementingVariantIds}
@@ -589,16 +596,22 @@ export function CollectionBrowser({
                     </button>
                   ) : null}
                 </div>
-              </>
+              </div>
             ) : (
-              <div className="rounded-lg border border-dashed border-[var(--line)] bg-[var(--surface)] px-6 py-12 text-center">
-                <h3 className="text-xl font-bold">No cards match these filters</h3>
+              <div className="collection-empty-state">
+                <h3 className="text-xl font-bold">
+                  {hasActiveFilters ? "No cards match these filters" : "Your collection is empty"}
+                </h3>
                 <p className="mx-auto mt-2 max-w-md text-sm leading-6 text-[var(--muted)]">
-                  Try a different card name or set.
+                  {hasActiveFilters
+                    ? "Try a wider range or clear filters to get back to your full binder."
+                    : "Cards you add to your collection will appear here."}
                 </p>
-                <button type="button" className="mt-5 font-semibold text-[var(--secondary)] hover:underline" onClick={clearFilters}>
-                  Clear filters
-                </button>
+                {hasActiveFilters ? (
+                  <button type="button" className="auth-submit mt-5" onClick={clearFilters}>
+                    Clear filters
+                  </button>
+                ) : null}
               </div>
             )}
           </div>

@@ -34,12 +34,16 @@ export function CollectionCardGrid({
           >
             <button
               type="button"
-              className="absolute left-3 top-3 z-10 inline-flex h-8 w-8 cursor-pointer items-center justify-center rounded-full border border-[var(--danger)] bg-[var(--background)] text-[var(--danger)] shadow-[0_10px_24px_rgb(0_0_0_/_28%)] transition hover:bg-[rgb(255_122_138_/_12%)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--danger)] disabled:cursor-wait disabled:opacity-55"
+              className="collection-card-remove-button"
               aria-label={`Remove one ${item.cardName} ${formatPrinting(item.printing)} ${formatCondition(item.condition)} from your collection`}
               disabled={isDecrementing}
               onClick={() => onDecrementItem(item)}
             >
-              <span className="mt-px h-[1.5px] w-3 rounded-full bg-current" aria-hidden="true" />
+              {isDecrementing ? (
+                <span className="collection-card-remove-spinner" aria-hidden="true" />
+              ) : (
+                <span className="collection-card-remove-minus" aria-hidden="true" />
+              )}
             </button>
             <Link className="block" href={`/cards/${encodeURIComponent(item.providerCardId)}`}>
               <div className="relative aspect-[4/3] overflow-hidden bg-[var(--surface-2)]">
