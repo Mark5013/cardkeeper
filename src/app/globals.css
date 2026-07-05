@@ -300,6 +300,80 @@ select {
   padding: 1rem;
 }
 
+.ebay-listing-card {
+  display: grid;
+  grid-template-columns: 3.6rem minmax(0, 1fr);
+  gap: 0.85rem;
+  align-items: center;
+  border: 1px solid var(--line);
+  border-radius: 0.75rem;
+  background: rgb(23 29 25 / 72%);
+  padding: 0.65rem;
+  color: var(--ink);
+  transition: border-color 150ms ease, background 150ms ease;
+}
+
+.ebay-listing-card:hover {
+  border-color: var(--secondary);
+  background: rgb(143 183 255 / 10%);
+}
+
+.ebay-listing-thumb {
+  width: 3.6rem;
+  aspect-ratio: 1;
+  border-radius: 0.55rem;
+  background-color: var(--surface-2);
+  background-position: center;
+  background-size: cover;
+}
+
+.ebay-listing-title {
+  overflow: hidden;
+  display: -webkit-box;
+  color: var(--ink);
+  font-size: 0.875rem;
+  font-weight: 750;
+  line-height: 1.25rem;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+.ebay-listings-dropdown {
+  margin-top: 1.25rem;
+}
+
+.ebay-listings-dropdown summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  min-height: 2.75rem;
+  border: 1px solid var(--line);
+  border-radius: 0.75rem;
+  background: var(--surface-2);
+  padding: 0.65rem 0.85rem;
+  color: var(--ink);
+  font-size: 0.875rem;
+  font-weight: 750;
+  cursor: pointer;
+  list-style: none;
+}
+
+.ebay-listings-dropdown summary::-webkit-details-marker {
+  display: none;
+}
+
+.ebay-listings-dropdown summary:hover,
+.ebay-listings-dropdown[open] summary {
+  border-color: var(--secondary);
+  background: rgb(143 183 255 / 10%);
+}
+
+.ebay-listings-dropdown[open] .control-chevron {
+  margin-top: 0.2rem;
+  transform: rotate(225deg);
+}
+
 .detail-stat span {
   color: var(--muted);
   font-size: 0.7rem;

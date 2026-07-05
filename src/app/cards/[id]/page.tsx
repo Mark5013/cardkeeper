@@ -8,8 +8,9 @@ import { SiteHeader } from "@/components/site-header";
 import { CollectionControls } from "@/components/collection/collection-controls";
 import { getCatalogPokemonCard, getCatalogPokemonCardPriceHistory } from "@/lib/catalog/data";
 import { getOwnedCardVariants } from "@/lib/collection/data";
+import { getEbayListingsForCard, type EbayListing } from "@/lib/ebay/listings";
 import { getCardPrintingOptions } from "@/lib/pokemon-tcg/printing";
-import type { PokemonTcgCard, PokemonTcgPrice } from "@/lib/pokemon-tcg/types";
+import type { PokemonTcgPrice } from "@/lib/pokemon-tcg/types";
 
 const usd = new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" });
 const eur = new Intl.NumberFormat("en-US", { style: "currency", currency: "EUR" });
@@ -43,12 +44,6 @@ function getSafeExternalUrl(value: string | undefined) {
   }
 }
 
-function buildEbaySearchUrl(card: PokemonTcgCard) {
-  const url = new URL("https://www.ebay.com/sch/i.html");
-  url.searchParams.set("_nkw", `${card.name} ${card.set.name} ${card.number} Pokemon TCG card`);
-  return url.toString();
-}
-
 function ListingLink({ href, label }: { href: string; label: string }) {
   return (
     <a
@@ -58,6 +53,35 @@ function ListingLink({ href, label }: { href: string; label: string }) {
       rel="noreferrer"
     >
       {label}
+    </a>
+  );
+}
+
+function EbayListingCard({ listing }: { listing: EbayListing }) {
+  return (
+    <a
+      className="ebay-listing-card"
+      href={listing.url}
+      target="_blank"
+      rel="noreferrer"
+    >
+      {listing.imageUrl ? (
+        <span
+          className="ebay-listing-thumb"
+          style={{ backgroundImage: `url(${listing.imageUrl})` }}
+          aria-hidden="true"
+        />
+      ) : (
+        <span className="ebay-listing-thumb" aria-hidden="true" />
+      )}
+      <span className="min-w-0">
+        <span className="ebay-listing-title">{listing.title}</span>
+        <span className="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-xs text-[var(--muted)]">
+          {listing.price ? <strong className="text-[var(--secondary)]">{listing.price}</strong> : null}
+          {listing.shipping ? <span>Shipping {listing.shipping}</span> : null}
+          {listing.condition ? <span>{listing.condition}</span> : null}
+        </span>
+      </span>
     </a>
   );
 }
@@ -97,11 +121,11 @@ export default async function CardDetailPage({ params }: { params: Promise<{ id:
 
   const ownedVariants = await getOwnedCardVariants(card.id);
   const priceHistory = await getCatalogPokemonCardPriceHistory(card.id);
+  const ebayListings = await getEbayListingsForCard(card);
   const printings = getCardPrintingOptions(card);
   const tcgplayerPrices = Object.entries(card.tcgplayer?.prices ?? {});
   const tcgplayerUrl = getSafeExternalUrl(card.tcgplayer?.url);
   const cardmarketPrices = card.cardmarket?.prices;
-  const ebayUrl = buildEbaySearchUrl(card);
   const details = [
     ["Set", card.set.name],
     ["Series", card.set.series],
@@ -158,8 +182,30 @@ export default async function CardDetailPage({ params }: { params: Promise<{ id:
                     TCGplayer listings are not available for this card.
                   </p>
                 )}
-                <ListingLink href={ebayUrl} label="eBay listings" />
+                <ListingLink href={ebayListings.searchUrl} label="Search eBay" />
               </div>
+              {ebayListings.listings.length ? (
+                <details className="ebay-listings-dropdown">
+                  <summary>
+                    <span>
+                      Current eBay listings
+                      {ebayListings.total !== null ? ` (${ebayListings.total.toLocaleString("en-US")} found)` : ""}
+                    </span>
+                    <span className="control-chevron" aria-hidden="true" />
+                  </summary>
+                  <div className="mt-3 max-h-[34rem] space-y-2 overflow-y-auto pr-1">
+                    {ebayListings.listings.map((listing) => (
+                      <EbayListingCard listing={listing} key={listing.id} />
+                    ))}
+                  </div>
+                </details>
+              ) : (
+                <p className="mt-4 rounded-lg border border-dashed border-[var(--line)] px-4 py-3 text-sm text-[var(--muted)]">
+                  {ebayListings.isConfigured
+                    ? "Current eBay listings are unavailable right now. The eBay search link is still available."
+                    : "Connect eBay API keys to show current listing cards here."}
+                </p>
+              )}
             </section>
           </div>
 
