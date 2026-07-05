@@ -6,6 +6,7 @@ import { db } from "@/db";
 import { cards, cardSets, cardVariants, collectionItems, currentPrices } from "@/db/schema";
 import { getCurrentUser } from "@/lib/supabase/auth";
 import { createClient } from "@/lib/supabase/server";
+import { logError, measureDbQuery } from "@/lib/observability";
 import { getCardPrintingOptions } from "@/lib/pokemon-tcg/printing";
 import type { PokemonTcgCard } from "@/lib/pokemon-tcg/types";
 
@@ -190,27 +191,38 @@ export async function getCurrentCollection(
   let rows;
 
   try {
-    rows = await db
-      .select({
-        item: collectionItems,
-        variant: cardVariants,
-        card: cards,
-        set: cardSets,
-      })
-      .from(collectionItems)
-      .innerJoin(cardVariants, eq(collectionItems.cardVariantId, cardVariants.id))
-      .innerJoin(cards, eq(cardVariants.cardId, cards.id))
-      .innerJoin(cardSets, eq(cards.setId, cardSets.id))
-      .where(whereCollection)
-      .orderBy(
-        sort === "created-asc" ? asc(collectionItems.createdAt) : desc(collectionItems.createdAt),
-        asc(cards.name),
-        sql`${cards.numberSortKey} asc nulls last`,
-        asc(cards.number),
-        asc(collectionItems.id),
-      );
+    rows = await measureDbQuery(
+      "db.collection_items_page",
+      () =>
+        db
+          .select({
+            item: collectionItems,
+            variant: cardVariants,
+            card: cards,
+            set: cardSets,
+          })
+          .from(collectionItems)
+          .innerJoin(cardVariants, eq(collectionItems.cardVariantId, cardVariants.id))
+          .innerJoin(cards, eq(cardVariants.cardId, cards.id))
+          .innerJoin(cardSets, eq(cards.setId, cardSets.id))
+          .where(whereCollection)
+          .orderBy(
+            sort === "created-asc" ? asc(collectionItems.createdAt) : desc(collectionItems.createdAt),
+            asc(cards.name),
+            sql`${cards.numberSortKey} asc nulls last`,
+            asc(cards.number),
+            asc(collectionItems.id),
+          ),
+      {
+        hasTextFilter: filterText.length > 0,
+        setFilterCount: setIds.length,
+        printingFilterCount: printings.length,
+        conditionFilterCount: conditionsFilter.length,
+        sort,
+      },
+    );
   } catch (error) {
-    console.error("Failed to load collection", error);
+    logError("db.collection_items_page.failed", error);
     throw new Error("Unable to load the collection.");
   }
 
@@ -304,20 +316,25 @@ async function getCurrentMarketPricesByVariantId(variantIds: string[]) {
 
   if (uniqueVariantIds.length === 0) return pricesByVariantId;
 
-  const priceRows = await db
-    .select({
-      cardVariantId: currentPrices.cardVariantId,
-      amountMinor: currentPrices.amountMinor,
-    })
-    .from(currentPrices)
-    .where(
-      and(
-        eq(currentPrices.source, "tcgcsv"),
-        eq(currentPrices.priceType, "market"),
-        eq(currentPrices.currency, "USD"),
-        inArray(currentPrices.cardVariantId, uniqueVariantIds),
-      ),
-    );
+  const priceRows = await measureDbQuery(
+    "db.collection_current_prices",
+    () =>
+      db
+        .select({
+          cardVariantId: currentPrices.cardVariantId,
+          amountMinor: currentPrices.amountMinor,
+        })
+        .from(currentPrices)
+        .where(
+          and(
+            eq(currentPrices.source, "tcgcsv"),
+            eq(currentPrices.priceType, "market"),
+            eq(currentPrices.currency, "USD"),
+            inArray(currentPrices.cardVariantId, uniqueVariantIds),
+          ),
+        ),
+    { variantCount: uniqueVariantIds.length },
+  );
 
   for (const row of priceRows) {
     pricesByVariantId.set(row.cardVariantId, row.amountMinor / 100);

@@ -5,7 +5,9 @@ import { getCatalogPokemonCard } from "@/lib/catalog/data";
 import { ensureCardVariant } from "@/lib/catalog/sync";
 import { CARD_CONDITIONS, type CardCondition } from "@/lib/collection/options";
 import { isSameOriginRequest } from "@/lib/http/security";
+import { logError, measureOperation } from "@/lib/observability";
 import { getCardPrintingOptions } from "@/lib/pokemon-tcg/printing";
+import { rateLimitRequest } from "@/lib/rate-limit";
 import { getCurrentUser } from "@/lib/supabase/auth";
 import { createClient } from "@/lib/supabase/server";
 
@@ -30,6 +32,16 @@ export async function PUT(request: Request, context: RouteContext) {
       { error: "Cross-origin collection changes are not allowed." },
       { status: 403, headers: privateHeaders },
     );
+  }
+
+  const limitedResponse = await rateLimitRequest(request, {
+    keyPrefix: "api:collection-mutation",
+    limit: 60,
+    windowMs: 60_000,
+  });
+
+  if (limitedResponse) {
+    return limitedResponse;
   }
 
   const user = await getCurrentUser();
@@ -91,7 +103,7 @@ export async function PUT(request: Request, context: RouteContext) {
       condition: parsedBody.data.condition,
     });
   } catch (error) {
-    console.error("Failed to synchronize card variant", error);
+    logError("api.collection_card.ensure_variant.failed", error, { cardId: cardId.data });
     return NextResponse.json(
       { error: "Unable to prepare this card for collection tracking." },
       { status: 500, headers: privateHeaders },
@@ -99,22 +111,27 @@ export async function PUT(request: Request, context: RouteContext) {
   }
 
   const supabase = await createClient();
-  const { data, error } = await supabase
-    .from("collection_items")
-    .upsert(
-      {
-        user_id: user.id,
-        card_variant_id: variantId,
-        quantity: parsedBody.data.quantity,
-        updated_at: new Date().toISOString(),
-      },
-      { onConflict: "user_id,card_variant_id" },
-    )
-    .select("id, card_variant_id, quantity, created_at, updated_at")
-    .single();
+  const { data, error } = await measureOperation(
+    "api.collection_card.put",
+    async () =>
+      await supabase
+        .from("collection_items")
+        .upsert(
+          {
+            user_id: user.id,
+            card_variant_id: variantId,
+            quantity: parsedBody.data.quantity,
+            updated_at: new Date().toISOString(),
+          },
+          { onConflict: "user_id,card_variant_id" },
+        )
+        .select("id, card_variant_id, quantity, created_at, updated_at")
+        .single(),
+    { cardId: cardId.data, variantId },
+  );
 
   if (error) {
-    console.error("Failed to save collection item", { code: error.code });
+    logError("api.collection_card.put.failed", error, { cardId: cardId.data, variantId });
     return NextResponse.json(
       { error: "Unable to update the collection." },
       { status: 500, headers: privateHeaders },

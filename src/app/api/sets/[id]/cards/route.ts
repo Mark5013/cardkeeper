@@ -3,6 +3,7 @@ import { z } from "zod";
 
 import { getCatalogPokemonCardsBySetPage } from "@/lib/catalog/data";
 import { normalizeSetCardSort } from "@/lib/catalog/set-card-sort";
+import { measureOperation } from "@/lib/observability";
 import { rateLimitRequest } from "@/lib/rate-limit";
 
 const setCardsSchema = z.object({
@@ -14,7 +15,7 @@ const setCardsSchema = z.object({
 type RouteContext = { params: Promise<{ id: string }> };
 
 export async function GET(request: Request, context: RouteContext) {
-  const limitedResponse = rateLimitRequest(request, {
+  const limitedResponse = await rateLimitRequest(request, {
     keyPrefix: "api:set-cards",
     limit: 120,
     windowMs: 60_000,
@@ -37,15 +38,19 @@ export async function GET(request: Request, context: RouteContext) {
 
   try {
     return NextResponse.json(
-      await getCatalogPokemonCardsBySetPage({
-        setId: id,
-        page: parsed.data.page,
-        pageSize: parsed.data.pageSize,
-        sort: normalizeSetCardSort(parsed.data.sort),
-      }),
+      await measureOperation(
+        "api.set_cards",
+        () =>
+          getCatalogPokemonCardsBySetPage({
+            setId: id,
+            page: parsed.data.page,
+            pageSize: parsed.data.pageSize,
+            sort: normalizeSetCardSort(parsed.data.sort),
+          }),
+        { setId: id, page: parsed.data.page, pageSize: parsed.data.pageSize },
+      ),
     );
-  } catch (error) {
-    console.error("Set cards API failed", { setId: id, error });
+  } catch {
     return NextResponse.json(
       { error: "The cards in this set are temporarily unavailable." },
       { status: 502 },

@@ -2,6 +2,8 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 
 import { isSameOriginRequest } from "@/lib/http/security";
+import { logError, measureOperation } from "@/lib/observability";
+import { rateLimitRequest } from "@/lib/rate-limit";
 import { getCurrentUser } from "@/lib/supabase/auth";
 import { createClient } from "@/lib/supabase/server";
 
@@ -22,6 +24,16 @@ export async function PUT(request: Request, context: RouteContext) {
       { error: "Cross-origin collection changes are not allowed." },
       { status: 403, headers: mutationHeaders() },
     );
+  }
+
+  const limitedResponse = await rateLimitRequest(request, {
+    keyPrefix: "api:collection-mutation",
+    limit: 60,
+    windowMs: 60_000,
+  });
+
+  if (limitedResponse) {
+    return limitedResponse;
   }
 
   const user = await getCurrentUser();
@@ -60,21 +72,27 @@ export async function PUT(request: Request, context: RouteContext) {
   }
 
   const supabase = await createClient();
-  const { data, error } = await supabase
-    .from("collection_items")
-    .upsert(
-      {
-        user_id: user.id,
-        card_variant_id: variantId.data,
-        quantity: parsedBody.data.quantity,
-        updated_at: new Date().toISOString(),
-      },
-      { onConflict: "user_id,card_variant_id" },
-    )
-    .select("id, card_variant_id, quantity, created_at, updated_at")
-    .single();
+  const { data, error } = await measureOperation(
+    "api.collection_variant.put",
+    async () =>
+      await supabase
+        .from("collection_items")
+        .upsert(
+          {
+            user_id: user.id,
+            card_variant_id: variantId.data,
+            quantity: parsedBody.data.quantity,
+            updated_at: new Date().toISOString(),
+          },
+          { onConflict: "user_id,card_variant_id" },
+        )
+        .select("id, card_variant_id, quantity, created_at, updated_at")
+        .single(),
+    { variantId: variantId.data },
+  );
 
   if (error) {
+    logError("api.collection_variant.put.failed", error, { variantId: variantId.data });
     const status = error.code === "23503" ? 404 : 500;
     return NextResponse.json(
       { error: status === 404 ? "Card variant not found." : "Unable to update the collection." },
@@ -104,6 +122,16 @@ export async function DELETE(request: Request, context: RouteContext) {
     );
   }
 
+  const limitedResponse = await rateLimitRequest(request, {
+    keyPrefix: "api:collection-mutation",
+    limit: 60,
+    windowMs: 60_000,
+  });
+
+  if (limitedResponse) {
+    return limitedResponse;
+  }
+
   const user = await getCurrentUser();
   if (!user) {
     return NextResponse.json(
@@ -122,13 +150,19 @@ export async function DELETE(request: Request, context: RouteContext) {
   }
 
   const supabase = await createClient();
-  const { error } = await supabase
-    .from("collection_items")
-    .delete()
-    .eq("user_id", user.id)
-    .eq("card_variant_id", variantId.data);
+  const { error } = await measureOperation(
+    "api.collection_variant.delete",
+    async () =>
+      await supabase
+        .from("collection_items")
+        .delete()
+        .eq("user_id", user.id)
+        .eq("card_variant_id", variantId.data),
+    { variantId: variantId.data },
+  );
 
   if (error) {
+    logError("api.collection_variant.delete.failed", error, { variantId: variantId.data });
     return NextResponse.json(
       { error: "Unable to remove the card." },
       { status: 500, headers: mutationHeaders() },

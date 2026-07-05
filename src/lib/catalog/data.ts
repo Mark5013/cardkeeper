@@ -25,6 +25,7 @@ import type {
 import { formatPrinting } from "@/lib/pokemon-tcg/printing";
 import type { SearchCardSort } from "@/lib/catalog/search-card-sort";
 import type { SetCardSort } from "@/lib/catalog/set-card-sort";
+import { logError, measureDbQuery } from "@/lib/observability";
 
 export type CardPriceHistoryPoint = {
   observedAt: string;
@@ -200,26 +201,36 @@ async function queryLocalSearchPage(input: {
             ...relevanceOrderBy,
           ]
         : relevanceOrderBy;
-  const [totalRow] = await db
-    .select({ count: sql<number>`count(*)::integer` })
-    .from(cards)
-    .innerJoin(cardSets, eq(cards.setId, cardSets.id))
-    .where(whereSearch);
+  const [totalRow] = await measureDbQuery(
+    "db.catalog_search_count",
+    () =>
+      db
+        .select({ count: sql<number>`count(*)::integer` })
+        .from(cards)
+        .innerJoin(cardSets, eq(cards.setId, cardSets.id))
+        .where(whereSearch),
+    { strategy: input.strategy, sort: input.sort },
+  );
   const totalCount = totalRow?.count ?? 0;
 
   if (totalCount === 0) {
     return { rows: [], totalCount };
   }
 
-  const rows = await db
-    .select({ card: cards, set: cardSets })
-    .from(cards)
-    .innerJoin(cardSets, eq(cards.setId, cardSets.id))
-    .leftJoin(currentMarketPriceByCard, eq(currentMarketPriceByCard.cardId, cards.id))
-    .where(whereSearch)
-    .orderBy(...orderBy)
-    .limit(input.pageSize)
-    .offset(offset);
+  const rows = await measureDbQuery(
+    "db.catalog_search_rows",
+    () =>
+      db
+        .select({ card: cards, set: cardSets })
+        .from(cards)
+        .innerJoin(cardSets, eq(cards.setId, cardSets.id))
+        .leftJoin(currentMarketPriceByCard, eq(currentMarketPriceByCard.cardId, cards.id))
+        .where(whereSearch)
+        .orderBy(...orderBy)
+        .limit(input.pageSize)
+        .offset(offset),
+    { strategy: input.strategy, page: input.page, pageSize: input.pageSize, sort: input.sort },
+  );
 
   return { rows, totalCount };
 }
@@ -267,26 +278,36 @@ async function queryLocalClosestMatches(input: {
     sql`${normalizedCardNameSql()} % ${normalizedName}`,
   );
 
-  const [totalRow] = await db
-    .select({ count: sql<number>`count(*)::integer` })
-    .from(cards)
-    .innerJoin(cardSets, eq(cards.setId, cardSets.id))
-    .where(whereClosest);
+  const [totalRow] = await measureDbQuery(
+    "db.catalog_closest_count",
+    () =>
+      db
+        .select({ count: sql<number>`count(*)::integer` })
+        .from(cards)
+        .innerJoin(cardSets, eq(cards.setId, cardSets.id))
+        .where(whereClosest),
+    { sort: input.sort },
+  );
   const totalCount = totalRow?.count ?? 0;
 
   if (totalCount === 0) {
     return { rows: [], totalCount };
   }
 
-  const rows = await db
-    .select({ card: cards, set: cardSets })
-    .from(cards)
-    .innerJoin(cardSets, eq(cards.setId, cardSets.id))
-    .leftJoin(currentMarketPriceByCard, eq(currentMarketPriceByCard.cardId, cards.id))
-    .where(whereClosest)
-    .orderBy(...orderBy)
-    .limit(input.pageSize)
-    .offset(offset);
+  const rows = await measureDbQuery(
+    "db.catalog_closest_rows",
+    () =>
+      db
+        .select({ card: cards, set: cardSets })
+        .from(cards)
+        .innerJoin(cardSets, eq(cards.setId, cardSets.id))
+        .leftJoin(currentMarketPriceByCard, eq(currentMarketPriceByCard.cardId, cards.id))
+        .where(whereClosest)
+        .orderBy(...orderBy)
+        .limit(input.pageSize)
+        .offset(offset),
+    { page: input.page, pageSize: input.pageSize, sort: input.sort },
+  );
 
   return { rows, totalCount };
 }
@@ -310,21 +331,26 @@ async function getCurrentMarketPricesByCardId(cardIds: string[]) {
 
   if (uniqueCardIds.length === 0) return pricesByCardId;
 
-  const priceRows = await db
-    .select({
-      cardId: cardVariants.cardId,
-      amountMinor: currentPrices.amountMinor,
-    })
-    .from(currentPrices)
-    .innerJoin(cardVariants, eq(currentPrices.cardVariantId, cardVariants.id))
-    .where(
-      and(
-        eq(currentPrices.source, "tcgcsv"),
-        eq(currentPrices.priceType, "market"),
-        eq(currentPrices.currency, "USD"),
-        inArray(cardVariants.cardId, uniqueCardIds),
-      ),
-    );
+  const priceRows = await measureDbQuery(
+    "db.catalog_current_prices_by_card",
+    () =>
+      db
+        .select({
+          cardId: cardVariants.cardId,
+          amountMinor: currentPrices.amountMinor,
+        })
+        .from(currentPrices)
+        .innerJoin(cardVariants, eq(currentPrices.cardVariantId, cardVariants.id))
+        .where(
+          and(
+            eq(currentPrices.source, "tcgcsv"),
+            eq(currentPrices.priceType, "market"),
+            eq(currentPrices.currency, "USD"),
+            inArray(cardVariants.cardId, uniqueCardIds),
+          ),
+        ),
+    { cardCount: uniqueCardIds.length },
+  );
 
   for (const row of priceRows) {
     const amountUsd = row.amountMinor / 100;
@@ -422,7 +448,7 @@ export const getCatalogPokemonSets = cache(async () => {
       return localSets.map(mapSet);
     }
   } catch (error) {
-    console.error("Local set catalog failed, falling back to provider", error);
+    logError("catalog.local_sets.failed", error);
   }
 
   return getPokemonSets();
@@ -440,7 +466,7 @@ export const getCatalogPokemonSet = cache(async (id: string) => {
       return mapSet(localSet);
     }
   } catch (error) {
-    console.error("Local set lookup failed, falling back to provider", { setId: id, error });
+    logError("catalog.local_set.failed", error, { setId: id });
   }
 
   return getPokemonSet(id);
@@ -480,24 +506,34 @@ export const getCatalogPokemonCardsBySetPage = cache(async (input: {
               ...tieBreakSort,
             ]
           : tieBreakSort;
-    const [totalRow] = await db
-      .select({ count: sql<number>`count(*)::integer` })
-      .from(cards)
-      .innerJoin(cardSets, eq(cards.setId, cardSets.id))
-      .where(whereSet);
+    const [totalRow] = await measureDbQuery(
+      "db.set_cards_count",
+      () =>
+        db
+          .select({ count: sql<number>`count(*)::integer` })
+          .from(cards)
+          .innerJoin(cardSets, eq(cards.setId, cardSets.id))
+          .where(whereSet),
+      { setId: input.setId },
+    );
 
     const totalCount = totalRow?.count ?? 0;
 
     if (totalCount > 0) {
-      const rows = await db
-        .select({ card: cards, set: cardSets })
-        .from(cards)
-        .innerJoin(cardSets, eq(cards.setId, cardSets.id))
-        .leftJoin(currentMarketPriceByCard, eq(currentMarketPriceByCard.cardId, cards.id))
-        .where(whereSet)
-        .orderBy(...orderBy)
-        .limit(pageSize)
-        .offset(offset);
+      const rows = await measureDbQuery(
+        "db.set_cards_rows",
+        () =>
+          db
+            .select({ card: cards, set: cardSets })
+            .from(cards)
+            .innerJoin(cardSets, eq(cards.setId, cardSets.id))
+            .leftJoin(currentMarketPriceByCard, eq(currentMarketPriceByCard.cardId, cards.id))
+            .where(whereSet)
+            .orderBy(...orderBy)
+            .limit(pageSize)
+            .offset(offset),
+        { setId: input.setId, page, pageSize, sort },
+      );
 
       return {
         cards: await mapCardSearchRows(rows),
@@ -509,10 +545,7 @@ export const getCatalogPokemonCardsBySetPage = cache(async (input: {
       };
     }
   } catch (error) {
-    console.error("Local set cards failed, falling back to provider", {
-      setId: input.setId,
-      error,
-    });
+    logError("catalog.local_set_cards.failed", error, { setId: input.setId });
   }
 
   return getPokemonCardsBySetPage(input);
@@ -543,7 +576,7 @@ export const getCatalogPokemonCard = cache(async (id: string) => {
       if (card) return card;
     }
   } catch (error) {
-    console.error("Local card lookup failed, falling back to provider", { cardId: id, error });
+    logError("catalog.local_card.failed", error, { cardId: id });
   }
 
   return getPokemonCard(id);
@@ -590,7 +623,7 @@ export const getCatalogPokemonCardPriceHistory = cache(async (id: string) => {
       points,
     }));
   } catch (error) {
-    console.error("Local card price history failed", { cardId: id, error });
+    logError("catalog.local_card_price_history.failed", error, { cardId: id });
     return [];
   }
 });
@@ -694,7 +727,7 @@ export async function searchCatalogPokemonCards(input: {
       }
     }
   } catch (error) {
-    console.error("Local card search failed, falling back to provider", error);
+    logError("catalog.local_card_search.failed", error);
   }
 
   return searchPokemonCards(input);

@@ -3,6 +3,7 @@ import { z } from "zod";
 
 import { searchCatalogPokemonCards } from "@/lib/catalog/data";
 import { normalizeSearchCardSort } from "@/lib/catalog/search-card-sort";
+import { measureOperation } from "@/lib/observability";
 import { rateLimitRequest } from "@/lib/rate-limit";
 
 const searchSchema = z.object({
@@ -14,7 +15,7 @@ const searchSchema = z.object({
 });
 
 export async function GET(request: Request) {
-  const limitedResponse = rateLimitRequest(request, {
+  const limitedResponse = await rateLimitRequest(request, {
     keyPrefix: "api:cards-search",
     limit: 120,
     windowMs: 60_000,
@@ -36,13 +37,17 @@ export async function GET(request: Request) {
 
   try {
     return NextResponse.json(
-      await searchCatalogPokemonCards({
-        ...parsed.data,
-        sort: normalizeSearchCardSort(parsed.data.sort),
-      }),
+      await measureOperation(
+        "api.cards_search",
+        () =>
+          searchCatalogPokemonCards({
+            ...parsed.data,
+            sort: normalizeSearchCardSort(parsed.data.sort),
+          }),
+        { mode: parsed.data.mode, page: parsed.data.page, pageSize: parsed.data.pageSize },
+      ),
     );
-  } catch (error) {
-    console.error("Card search failed", error);
+  } catch {
     return NextResponse.json(
       { error: "The card catalog is temporarily unavailable." },
       { status: 502 },

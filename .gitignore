@@ -45,3 +45,5 @@ next-env.d.ts
 
 # local session notes
 docs/SESSION_HANDOFF_*.md
+docs/LOCAL_*.md
+docs/PROJECT_REVIEW_FINDINGS_*.md
