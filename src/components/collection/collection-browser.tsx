@@ -6,6 +6,7 @@ import type { ReactNode } from "react";
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import { CollectionCardGrid } from "@/components/collection/collection-card-grid";
+import { NumberField } from "@/components/ui/number-field";
 import { CARD_CONDITIONS } from "@/lib/collection/options";
 import type { CollectionSummaryDto } from "@/lib/collection/types";
 import type { CollectionItemDto } from "@/lib/collection/types";
@@ -266,27 +267,19 @@ export function CollectionBrowser({
         <div className="collection-price-range">
           <label>
             <span className="auth-label">Min</span>
-            <input
-              className="auth-input"
-              inputMode="decimal"
-              min="0"
-              step="0.01"
-              type="number"
+            <NumberField
               value={minPrice}
-              onChange={(event) => setMinPrice(normalizePriceInput(event.target.value))}
+              onValueChange={(value) => setMinPrice(normalizePriceInput(value))}
+              inputMode="decimal"
               placeholder="0.00"
             />
           </label>
           <label>
             <span className="auth-label">Max</span>
-            <input
-              className="auth-input"
-              inputMode="decimal"
-              min="0"
-              step="0.01"
-              type="number"
+            <NumberField
               value={maxPrice}
-              onChange={(event) => setMaxPrice(normalizePriceInput(event.target.value))}
+              onValueChange={(value) => setMaxPrice(normalizePriceInput(value))}
+              inputMode="decimal"
               placeholder="100.00"
             />
           </label>

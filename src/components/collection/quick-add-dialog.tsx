@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { FormEvent, useEffect, useState } from "react";
 
 import { FieldSelect } from "@/components/ui/field-select";
+import { QuantityAdjuster } from "@/components/ui/quantity-adjuster";
 import { CARD_CONDITIONS } from "@/lib/collection/options";
 import type { OwnedCardVariantDto } from "@/lib/collection/types";
 import type { CardSearchResult } from "@/lib/pokemon-tcg/types";
@@ -177,20 +178,15 @@ export function QuickAddDialog({
               />
             </label>
 
-            <label className="mt-4 block">
+            <div className="mt-4 block">
               <span className="auth-label">Copies to add</span>
-              <input
-                className="auth-input"
-                type="number"
-                inputMode="numeric"
-                min={1}
-                max={9999}
-                step={1}
+              <QuantityAdjuster
+                label="Copies to add"
                 value={quantity}
-                onChange={(event) => setQuantity(event.target.value)}
+                onValueChange={setQuantity}
                 required
               />
-            </label>
+            </div>
 
             <p className="mt-3 text-xs leading-5 text-[var(--muted)]">
               This adds to any copies already saved for {selectedPrinting?.label ?? "this finish"} in the selected condition.

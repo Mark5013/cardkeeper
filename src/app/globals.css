@@ -801,6 +801,75 @@ select {
   font-size: 0.875rem;
 }
 
+.number-field {
+  width: 100%;
+  height: 3rem;
+  border: 1px solid var(--line);
+  border-radius: 0.75rem;
+  outline: none;
+  background: var(--surface-2);
+  padding: 0 0.8rem;
+  color: var(--ink);
+  text-align: center;
+  transition: border-color 150ms ease, box-shadow 150ms ease;
+}
+
+.number-field:focus {
+  border-color: var(--secondary);
+  box-shadow: 0 0 0 3px rgb(143 183 255 / 12%);
+}
+
+.number-field::placeholder {
+  color: rgb(151 163 155 / 70%);
+}
+
+.quantity-adjuster {
+  display: grid;
+  grid-template-columns: 2.4rem minmax(0, 1fr) 2.4rem;
+  align-items: center;
+  gap: 0.65rem;
+  width: 100%;
+  pointer-events: none;
+}
+
+.quantity-adjuster-input {
+  position: relative;
+  z-index: 2;
+  height: 2.75rem;
+  pointer-events: auto;
+}
+
+.quantity-adjuster-button {
+  position: relative;
+  z-index: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.35rem;
+  height: 2.35rem;
+  border: 1px solid var(--line);
+  border-radius: 9999px;
+  appearance: none;
+  background: var(--surface-2);
+  color: var(--muted);
+  font-size: 1.15rem;
+  font-weight: 850;
+  line-height: 1;
+  cursor: pointer;
+  pointer-events: auto;
+  transition: border-color 150ms ease, background 150ms ease, color 150ms ease;
+}
+
+.quantity-adjuster-button[data-hovered="true"] {
+  border-color: var(--secondary);
+  background: rgb(143 183 255 / 10%);
+  color: var(--secondary);
+}
+
+.quantity-adjuster-button:focus-visible {
+  outline: none;
+}
+
 .collection-filter-text-button {
   border: 0;
   background: transparent;

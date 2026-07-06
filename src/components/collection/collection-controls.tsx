@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { FormEvent, useState } from "react";
 
 import { FieldSelect } from "@/components/ui/field-select";
+import { QuantityAdjuster } from "@/components/ui/quantity-adjuster";
 import { CARD_CONDITIONS } from "@/lib/collection/options";
 import type { OwnedCardVariantDto } from "@/lib/collection/types";
 import type { CardPrintingOption } from "@/lib/pokemon-tcg/printing";
@@ -189,20 +190,15 @@ export function CollectionControls({
         />
       </label>
 
-      <label className="mt-4 block">
+      <div className="mt-4 block">
         <span className="auth-label">Quantity</span>
-        <input
-          className="auth-input"
-          type="number"
-          inputMode="numeric"
-          min={1}
-          max={9999}
-          step={1}
+        <QuantityAdjuster
+          label="Quantity"
           value={quantity}
-          onChange={(event) => setQuantity(event.target.value)}
+          onValueChange={setQuantity}
           required
         />
-      </label>
+      </div>
 
       <p className="mt-3 text-xs leading-5 text-[var(--muted)]">
         The marketplace price reflects finish, but the Pokemon TCG API does not provide condition-specific prices.
