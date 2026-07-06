@@ -20,6 +20,7 @@ const bodySchema = z.object({
   printing: z.string().min(1).max(60).regex(/^[a-z0-9_]+$/),
   condition: z.enum(conditionValues),
   quantity: z.number().int().min(1).max(9999),
+  operation: z.enum(["set", "increment"]).optional().default("set"),
 });
 
 const privateHeaders = { "Cache-Control": "private, no-store" };
@@ -109,6 +110,32 @@ export async function PUT(request: Request, context: RouteContext<"/api/collecti
   }
 
   const supabase = await createClient();
+  let quantity = parsedBody.data.quantity;
+
+  if (parsedBody.data.operation === "increment") {
+    const { data: existingItem, error: existingError } = await measureOperation(
+      "api.collection_card.existing",
+      async () =>
+        await supabase
+          .from("collection_items")
+          .select("quantity")
+          .eq("user_id", user.id)
+          .eq("card_variant_id", variantId)
+          .maybeSingle(),
+      { cardId: cardId.data, variantId },
+    );
+
+    if (existingError) {
+      logError("api.collection_card.existing.failed", existingError, { cardId: cardId.data, variantId });
+      return NextResponse.json(
+        { error: "Unable to update the collection." },
+        { status: 500, headers: privateHeaders },
+      );
+    }
+
+    quantity = Math.min((existingItem?.quantity ?? 0) + parsedBody.data.quantity, 9999);
+  }
+
   const { data, error } = await measureOperation(
     "api.collection_card.put",
     async () =>
@@ -118,14 +145,14 @@ export async function PUT(request: Request, context: RouteContext<"/api/collecti
           {
             user_id: user.id,
             card_variant_id: variantId,
-            quantity: parsedBody.data.quantity,
+            quantity,
             updated_at: new Date().toISOString(),
           },
           { onConflict: "user_id,card_variant_id" },
         )
         .select("id, card_variant_id, quantity, created_at, updated_at")
         .single(),
-    { cardId: cardId.data, variantId },
+    { cardId: cardId.data, variantId, operation: parsedBody.data.operation },
   );
 
   if (error) {

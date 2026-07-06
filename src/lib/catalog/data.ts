@@ -22,7 +22,7 @@ import type {
   PokemonTcgSet,
   SetCardsPayload,
 } from "@/lib/pokemon-tcg/types";
-import { formatPrinting } from "@/lib/pokemon-tcg/printing";
+import { formatPrinting, getCardPrintingOptions } from "@/lib/pokemon-tcg/printing";
 import type { SearchCardSort } from "@/lib/catalog/search-card-sort";
 import type { SetCardSort } from "@/lib/catalog/set-card-sort";
 import { logError, measureDbQuery } from "@/lib/observability";
@@ -100,6 +100,9 @@ function mapCardSearchResult(input: {
     startingPriceUsd:
       input.currentMarketPriceUsd ?? (providerCard ? getStartingMarketPrice(providerCard) : null),
     priceUpdatedAt: providerCard?.tcgplayer?.updatedAt ?? null,
+    printings: providerCard
+      ? getCardPrintingOptions(providerCard)
+      : [{ value: "normal", label: "Normal", price: null }],
   };
 }
 

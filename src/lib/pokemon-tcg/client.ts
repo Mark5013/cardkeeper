@@ -12,6 +12,7 @@ import type {
   PokemonTcgSetsResponse,
   SetCardsPayload,
 } from "./types";
+import { getCardPrintingOptions } from "./printing";
 
 const API_BASE_URL = "https://api.pokemontcg.io/v2";
 const CARD_NUMBER_PATTERN = /^(?=.*\d)[a-z0-9]+(?:[-/][a-z0-9]+)*$/i;
@@ -106,6 +107,7 @@ function mapCard(card: PokemonTcgCard): CardSearchResult {
     set: card.set,
     startingPriceUsd: getStartingMarketPrice(card),
     priceUpdatedAt: card.tcgplayer?.updatedAt ?? null,
+    printings: getCardPrintingOptions(card),
   };
 }
 

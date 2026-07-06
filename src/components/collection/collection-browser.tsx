@@ -484,7 +484,7 @@ export function CollectionBrowser({
                 <p className="text-sm font-semibold text-[var(--muted)]">
                   Showing {items.length} of {visibleTotalItems} matching
                 </p>
-                <DropdownMenu.Root>
+                <DropdownMenu.Root modal={false}>
                   <DropdownMenu.Trigger className="sort-menu-button collection-sort-button" type="button">
                     <span>Sort by: {selectedOption.label}</span>
                     <span className="control-chevron" aria-hidden="true" />

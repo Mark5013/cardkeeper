@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { FormEvent, useState } from "react";
 
+import { FieldSelect } from "@/components/ui/field-select";
 import { CARD_CONDITIONS } from "@/lib/collection/options";
 import type { OwnedCardVariantDto } from "@/lib/collection/types";
 import type { CardPrintingOption } from "@/lib/pokemon-tcg/printing";
@@ -170,28 +171,22 @@ export function CollectionControls({
 
       <label className="mt-5 block">
         <span className="auth-label">Finish</span>
-        <select
-          className="auth-input"
+        <FieldSelect
+          label="Finish"
+          options={printings}
           value={printing}
-          onChange={(event) => updateSelection(event.target.value, condition)}
-        >
-          {printings.map((option) => (
-            <option key={option.value} value={option.value}>{option.label}</option>
-          ))}
-        </select>
+          onValueChange={(nextPrinting) => updateSelection(nextPrinting, condition)}
+        />
       </label>
 
       <label className="mt-4 block">
         <span className="auth-label">Condition</span>
-        <select
-          className="auth-input"
+        <FieldSelect
+          label="Condition"
+          options={CARD_CONDITIONS}
           value={condition}
-          onChange={(event) => updateSelection(printing, event.target.value)}
-        >
-          {CARD_CONDITIONS.map((option) => (
-            <option key={option.value} value={option.value}>{option.label}</option>
-          ))}
-        </select>
+          onValueChange={(nextCondition) => updateSelection(printing, nextCondition)}
+        />
       </label>
 
       <label className="mt-4 block">

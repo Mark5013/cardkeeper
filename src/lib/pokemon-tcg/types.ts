@@ -140,6 +140,11 @@ export type CardSearchResult = {
   };
   startingPriceUsd: number | null;
   priceUpdatedAt: string | null;
+  printings: Array<{
+    value: string;
+    label: string;
+    price: PokemonTcgPrice | null;
+  }>;
 };
 
 export type ParsedCardQuery = {

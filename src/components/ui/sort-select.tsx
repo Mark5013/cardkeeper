@@ -1,6 +1,6 @@
 "use client";
 
-import * as Select from "@radix-ui/react-select";
+import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
 
 type SortOption<TValue extends string> = {
   value: TValue;
@@ -18,28 +18,28 @@ export function SortSelect<TValue extends string>({
   value: TValue;
   onValueChange: (value: TValue) => void;
 }) {
+  const selectedOption = options.find((option) => option.value === value);
+
   return (
     <div className="catalog-sort-control">
       <span>{label}</span>
-      <Select.Root value={value} onValueChange={(nextValue) => onValueChange(nextValue as TValue)}>
-        <Select.Trigger className="catalog-select-trigger" aria-label={label}>
-          <Select.Value />
-          <Select.Icon asChild aria-hidden="true">
-            <span className="control-chevron" />
-          </Select.Icon>
-        </Select.Trigger>
-        <Select.Portal>
-          <Select.Content className="control-menu" position="popper" sideOffset={6}>
-            <Select.Viewport>
+      <DropdownMenu.Root modal={false}>
+        <DropdownMenu.Trigger className="catalog-select-trigger" type="button" aria-label={label}>
+          <span>{selectedOption?.label ?? value}</span>
+          <span className="control-chevron" aria-hidden="true" />
+        </DropdownMenu.Trigger>
+        <DropdownMenu.Portal>
+          <DropdownMenu.Content className="control-menu" align="end" sideOffset={6}>
+            <DropdownMenu.RadioGroup value={value} onValueChange={(nextValue) => onValueChange(nextValue as TValue)}>
               {options.map((option) => (
-                <Select.Item className="control-menu-option" value={option.value} key={option.value}>
-                  <Select.ItemText>{option.label}</Select.ItemText>
-                </Select.Item>
+                <DropdownMenu.RadioItem className="control-menu-option" value={option.value} key={option.value}>
+                  {option.label}
+                </DropdownMenu.RadioItem>
               ))}
-            </Select.Viewport>
-          </Select.Content>
-        </Select.Portal>
-      </Select.Root>
+            </DropdownMenu.RadioGroup>
+          </DropdownMenu.Content>
+        </DropdownMenu.Portal>
+      </DropdownMenu.Root>
     </div>
   );
 }
