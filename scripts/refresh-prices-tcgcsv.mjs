@@ -220,8 +220,10 @@ async function refreshPrices() {
     productsChecked: 0,
     productsMatched: 0,
     priceRowsPrepared: 0,
+    externalRefsPrepared: 0,
     currentPricesUpserted: 0,
     pricePointsInserted: 0,
+    externalRefsUpserted: 0,
   };
 
   console.log(
@@ -252,6 +254,7 @@ async function refreshPrices() {
     const cardProducts = productsPayload.results.filter(isCardProduct);
     const pricesByProductId = groupPricesByProductId(pricesPayload.results);
     const groupPriceRecords = [];
+    const groupExternalRefRecords = [];
     const groupMatches = [];
 
     stats.productsChecked += cardProducts.length;
@@ -268,17 +271,24 @@ async function refreshPrices() {
 
       stats.productsMatched += setPriceRecords.productsMatched;
       groupPriceRecords.push(...setPriceRecords.priceRecords);
+      groupExternalRefRecords.push(...setPriceRecords.externalRefRecords);
       groupMatches.push(
-        `${localSet.name}: ${setPriceRecords.productsMatched.toLocaleString()} matched, ${setPriceRecords.priceRecords.length.toLocaleString()} observations`,
+        `${localSet.name}: ${setPriceRecords.productsMatched.toLocaleString()} matched, ${setPriceRecords.priceRecords.length.toLocaleString()} observations, ${setPriceRecords.externalRefRecords.length.toLocaleString()} external refs`,
       );
     }
 
     stats.priceRowsPrepared += groupPriceRecords.length;
+    stats.externalRefsPrepared += groupExternalRefRecords.length;
 
     if (!options.dryRun && groupPriceRecords.length > 0) {
       const writeStats = await writePrices(groupPriceRecords);
       stats.currentPricesUpserted += writeStats.currentPricesUpserted;
       stats.pricePointsInserted += writeStats.pricePointsInserted;
+    }
+
+    if (!options.dryRun && groupExternalRefRecords.length > 0) {
+      const refWriteStats = await writeExternalRefs(groupExternalRefRecords);
+      stats.externalRefsUpserted += refWriteStats.externalRefsUpserted;
     }
 
     console.log(
@@ -292,7 +302,7 @@ async function refreshPrices() {
 
   const elapsedSeconds = ((Date.now() - startedAt) / 1000).toFixed(1);
   console.log(
-    `TCGCSV price refresh complete in ${elapsedSeconds}s. ${stats.groupsMatched}/${stats.groupsChecked} groups matched, ${stats.productsMatched}/${stats.productsChecked} products matched, ${stats.priceRowsPrepared.toLocaleString()} observations prepared, ${stats.currentPricesUpserted.toLocaleString()} current prices upserted, ${stats.pricePointsInserted.toLocaleString()} price points inserted.`,
+    `TCGCSV price refresh complete in ${elapsedSeconds}s. ${stats.groupsMatched}/${stats.groupsChecked} groups matched, ${stats.productsMatched}/${stats.productsChecked} products matched, ${stats.priceRowsPrepared.toLocaleString()} observations prepared, ${stats.externalRefsPrepared.toLocaleString()} external refs prepared, ${stats.currentPricesUpserted.toLocaleString()} current prices upserted, ${stats.pricePointsInserted.toLocaleString()} price points inserted, ${stats.externalRefsUpserted.toLocaleString()} external refs upserted.`,
   );
 }
 
@@ -315,7 +325,9 @@ async function preparePriceRecordsForSet({
     localCards.map((card) => [getCardNumberAndNameKey(card.number, card.name, localSet), card]),
   );
   const amountsByCardPrinting = new Map();
+  const externalRefsByCardPrinting = new Map();
   const priceRecords = [];
+  const externalRefRecords = [];
   let productsMatched = 0;
 
   for (const product of cardProducts) {
@@ -346,6 +358,20 @@ async function preparePriceRecordsForSet({
         printing,
         amountRecords,
       });
+      mergeExternalRefByCardPrinting(externalRefsByCardPrinting, {
+        cardId: localCard.id,
+        printing,
+        source: "tcgplayer",
+        refType: "product_id",
+        refValue: String(product.productId),
+        metadata: {
+          tcgcsvGroupId: group.groupId,
+          tcgcsvGroupName: group.name,
+          tcgcsvProductName: product.name,
+          tcgcsvCleanName: product.cleanName,
+          tcgcsvSubTypeName: price.subTypeName,
+        },
+      });
     }
   }
 
@@ -370,9 +396,24 @@ async function preparePriceRecordsForSet({
         });
       }
     }
+
+    const externalRefInputs =
+      externalRefsByCardPrinting.get(getCardPrintingKey(priceInput.cardId, priceInput.printing)) ?? [];
+
+    for (const cardVariantId of variantIds) {
+      for (const refInput of externalRefInputs) {
+        externalRefRecords.push({
+          card_variant_id: cardVariantId,
+          source: refInput.source,
+          ref_type: refInput.refType,
+          ref_value: refInput.refValue,
+          metadata: sql.json(refInput.metadata),
+        });
+      }
+    }
   }
 
-  return { priceRecords, productsMatched };
+  return { priceRecords, externalRefRecords, productsMatched };
 }
 
 function getProductCardNumber(product, localSet) {
@@ -462,6 +503,23 @@ function mergeAmountRecordsByCardPrinting(amountsByCardPrinting, priceInput) {
     amountRecords: averageAmountRecords(existingInput.amountRecords, priceInput.amountRecords, existingInput.samples),
     samples: existingInput.samples + 1,
   });
+}
+
+function mergeExternalRefByCardPrinting(externalRefsByCardPrinting, refInput) {
+  const key = getCardPrintingKey(refInput.cardId, refInput.printing);
+  const existingInputs = externalRefsByCardPrinting.get(key) ?? [];
+  const existingKey = `${refInput.source}:${refInput.refType}:${refInput.refValue}`;
+
+  if (
+    !existingInputs.some(
+      (existingInput) =>
+        `${existingInput.source}:${existingInput.refType}:${existingInput.refValue}` === existingKey,
+    )
+  ) {
+    existingInputs.push(refInput);
+  }
+
+  externalRefsByCardPrinting.set(key, existingInputs);
 }
 
 function averageAmountRecords(existingAmountRecords, nextAmountRecords, existingSamples) {
@@ -741,6 +799,31 @@ async function writePrices(priceRecords) {
   return { currentPricesUpserted, pricePointsInserted };
 }
 
+async function writeExternalRefs(externalRefRecords) {
+  let externalRefsUpserted = 0;
+
+  for (const batch of chunk(dedupeExternalRefRecords(externalRefRecords), WRITE_BATCH_SIZE)) {
+    const rows = await sql`
+      insert into card_variant_external_refs ${sql(
+        batch,
+        "card_variant_id",
+        "source",
+        "ref_type",
+        "ref_value",
+        "metadata",
+      )}
+      on conflict (card_variant_id, source, ref_type, ref_value) do update set
+        metadata = excluded.metadata,
+        updated_at = now()
+      returning id
+    `;
+
+    externalRefsUpserted += rows.length;
+  }
+
+  return { externalRefsUpserted };
+}
+
 function buildLocalSetMatchers(localSets) {
   return localSets.map((set) => ({
     set,
@@ -935,6 +1018,19 @@ function dedupePriceRecords(priceRecords) {
   for (const row of priceRecords) {
     rowsByKey.set(
       `${row.card_variant_id}:${row.source}:${row.price_type}:${row.currency}:${row.observed_at.toISOString()}`,
+      row,
+    );
+  }
+
+  return Array.from(rowsByKey.values());
+}
+
+function dedupeExternalRefRecords(externalRefRecords) {
+  const rowsByKey = new Map();
+
+  for (const row of externalRefRecords) {
+    rowsByKey.set(
+      `${row.card_variant_id}:${row.source}:${row.ref_type}:${row.ref_value}`,
       row,
     );
   }

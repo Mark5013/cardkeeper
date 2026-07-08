@@ -77,6 +77,16 @@ export type Database = {
           external_variant_id: string | null;
         }
       >;
+      card_variant_external_refs: Table<
+        TimestampColumns & {
+          id: string;
+          card_variant_id: string;
+          source: string;
+          ref_type: string;
+          ref_value: string;
+          metadata: Json | null;
+        }
+      >;
       collection_items: Table<
         TimestampColumns & {
           id: string;

@@ -120,6 +120,33 @@ export const cardVariants = pgTable(
   ],
 );
 
+export const cardVariantExternalRefs = pgTable(
+  "card_variant_external_refs",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    cardVariantId: uuid("card_variant_id")
+      .notNull()
+      .references(() => cardVariants.id, { onDelete: "cascade" }),
+    source: text("source").notNull(),
+    refType: text("ref_type").notNull(),
+    refValue: text("ref_value").notNull(),
+    metadata: jsonb("metadata").$type<Record<string, unknown>>(),
+    ...timestamps,
+  },
+  (table) => [
+    uniqueIndex("card_variant_external_refs_identity_idx").on(
+      table.cardVariantId,
+      table.source,
+      table.refType,
+      table.refValue,
+    ),
+    index("card_variant_external_refs_ref_idx").on(table.source, table.refType, table.refValue),
+    index("card_variant_external_refs_variant_idx").on(table.cardVariantId),
+    check("card_variant_external_refs_source_format_check", sql`${table.source} ~ '^[a-z0-9_]{1,60}$'`),
+    check("card_variant_external_refs_ref_type_format_check", sql`${table.refType} ~ '^[a-z0-9_]{1,60}$'`),
+  ],
+);
+
 export const collectionItems = pgTable(
   "collection_items",
   {
