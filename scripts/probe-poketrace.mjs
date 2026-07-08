@@ -114,24 +114,42 @@ async function loadLocalSamples(maxCards) {
     const [row] = await sql`
       select
         cards.provider_id,
+        cards.id,
         cards.name,
         cards.number,
         cards.provider_data,
         card_sets.provider_id as set_provider_id,
-        card_sets.name as set_name
+        card_sets.name as set_name,
+        coalesce(
+          array_agg(distinct card_variant_external_refs.ref_value)
+            filter (where card_variant_external_refs.ref_value is not null),
+          array[]::text[]
+        ) as tcgplayer_product_ids
       from public.cards
       inner join public.card_sets on cards.set_id = card_sets.id
+      left join public.card_variants on card_variants.card_id = cards.id
+        and card_variants.language_code = 'en'
+      left join public.card_variant_external_refs
+        on card_variant_external_refs.card_variant_id = card_variants.id
+        and card_variant_external_refs.source = 'tcgplayer'
+        and card_variant_external_refs.ref_type = 'product_id'
       where card_sets.provider_id = ${sample.setId}
         and cards.language_code = 'en'
         and lower(cards.number) = lower(${sample.number})
+      group by cards.id, card_sets.provider_id, card_sets.name
       limit 1
     `;
+
+    const tcgplayerIds = uniqueStrings([
+      extractTcgplayerId(row?.provider_data?.tcgplayer?.url),
+      ...(row?.tcgplayer_product_ids ?? []),
+    ]);
 
     rows.push({
       ...sample,
       found: Boolean(row),
       card: row ?? null,
-      tcgplayerId: extractTcgplayerId(row?.provider_data?.tcgplayer?.url),
+      tcgplayerIds,
     });
   }
 
@@ -148,7 +166,7 @@ function printLocalSamples(samples) {
 
     console.log(
       `LOCAL ${sample.card.set_name} #${sample.card.number} ${sample.card.name}` +
-        `${sample.tcgplayerId ? ` tcgplayer=${sample.tcgplayerId}` : ""}` +
+        `${sample.tcgplayerIds.length > 0 ? ` tcgplayer=${sample.tcgplayerIds.join(",")}` : ""}` +
         ` (${sample.note})`,
     );
   }
@@ -203,11 +221,12 @@ async function buildCardSearchAttempts(sample) {
   const setSearches = getSetSearches(sample);
   const setSlugs = [];
 
-  if (sample.tcgplayerId) {
+  if (sample.tcgplayerIds.length > 0) {
+    const tcgplayerIds = sample.tcgplayerIds.slice(0, 20).join(",");
     attempts.push({
-      label: `tcgplayer_ids:${sample.tcgplayerId}`,
+      label: `tcgplayer_ids:${tcgplayerIds}`,
       params: {
-        tcgplayer_ids: sample.tcgplayerId,
+        tcgplayer_ids: tcgplayerIds,
         market: "US",
         product_type: "single",
         limit: options.limit,
@@ -376,7 +395,7 @@ function rankCandidates(sample, candidates) {
       let score = 0;
 
       const candidateTcgplayerId = String(card.refs?.tcgplayerId ?? card.tcgplayerId ?? "");
-      if (sample.tcgplayerId && candidateTcgplayerId === sample.tcgplayerId) {
+      if (sample.tcgplayerIds.includes(candidateTcgplayerId)) {
         score += 100;
         reasons.push("tcgplayer id match");
       }
@@ -425,7 +444,7 @@ function rankCandidates(sample, candidates) {
 
 function isStrongCandidate(sample, candidate) {
   const candidateTcgplayerId = String(candidate.refs?.tcgplayerId ?? candidate.tcgplayerId ?? "");
-  if (sample.tcgplayerId && candidateTcgplayerId === sample.tcgplayerId) return true;
+  if (sample.tcgplayerIds.includes(candidateTcgplayerId)) return true;
 
   return (
     (normalizeText(candidate.name) === normalizeText(sample.card.name) ||
@@ -538,6 +557,10 @@ function cardNumbersMatch(candidateNumber, localNumber) {
   const candidate = normalizeCardNumber(candidateNumber);
   const local = normalizeCardNumber(localNumber);
   return candidate === local || candidate.startsWith(local);
+}
+
+function uniqueStrings(values) {
+  return [...new Set(values.filter((value) => typeof value === "string" && value.trim().length > 0))];
 }
 
 function parseArgs(args) {
