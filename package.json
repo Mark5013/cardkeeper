@@ -14,6 +14,8 @@
     "catalog:import": "node scripts/import-catalog.mjs",
     "catalog:test-search": "node scripts/test-catalog-search.mjs",
     "poketrace:probe": "node scripts/probe-poketrace.mjs",
+    "poketrace:reconcile-refs": "node scripts/reconcile-poketrace-refs.mjs",
+    "prices:refresh:poketrace": "node scripts/refresh-prices-poketrace.mjs",
     "prices:refresh": "node scripts/refresh-prices-tcgcsv.mjs",
     "db:test-rls": "node scripts/test-rls.mjs",
     "db:push": "drizzle-kit push",

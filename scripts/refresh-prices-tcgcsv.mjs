@@ -63,7 +63,7 @@ const SET_NAME_ALIASES = new Map(
         "XY Black Star Promos",
       ],
     ],
-    ["Battle Academy 2024", ["Scarlet & Violet Promos"]],
+    ["Battle Academy 2024", ["Scarlet & Violet Promos", "Scarlet & Violet Black Star Promos"]],
     ["Best of Promos", ["Best of Game"]],
     ["Deck Exclusives", ["Base"]],
     [
@@ -110,8 +110,8 @@ const SET_NAME_ALIASES = new Map(
     ["SM Promos", "SM Black Star Promos"],
     ["SWSH: Sword & Shield Promo Cards", "SWSH Black Star Promos"],
     ["Sword & Shield Promo Cards", "SWSH Black Star Promos"],
-    ["SV: Scarlet & Violet Promo Cards", "Scarlet & Violet Promos"],
-    ["Scarlet & Violet Promo Cards", "Scarlet & Violet Promos"],
+    ["SV: Scarlet & Violet Promo Cards", ["Scarlet & Violet Promos", "Scarlet & Violet Black Star Promos"]],
+    ["Scarlet & Violet Promo Cards", ["Scarlet & Violet Promos", "Scarlet & Violet Black Star Promos"]],
   ].map(([groupName, setNames]) => [
     normalizeSetName(groupName),
     (Array.isArray(setNames) ? setNames : [setNames]).map((setName) => normalizeSetName(setName)),
@@ -122,6 +122,11 @@ const GROUP_SET_CARD_NUMBER_ALLOWLIST = new Map(
     [
       "Battle Academy 2024",
       "Scarlet & Violet Promos",
+      ["105", "106", "107", "108", "109", "110", "111", "112", "113", "114", "148"],
+    ],
+    [
+      "Battle Academy 2024",
+      "Scarlet & Violet Black Star Promos",
       ["105", "106", "107", "108", "109", "110", "111", "112", "113", "114", "148"],
     ],
     ["Deck Exclusives", "Base", ["8"]],

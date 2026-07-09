@@ -231,7 +231,7 @@ export async function getCurrentCollection(
   }
 
   const currentMarketPrices = await getCurrentMarketPricesByVariantId(
-    rows.map(({ variant }) => variant.id),
+    rows.map(({ variant }) => variant),
   );
   const allItems = rows.map(({ item, variant, card, set }) => {
     const providerCard = card.providerData as unknown as PokemonTcgCard | null;
@@ -310,14 +310,15 @@ export async function getCurrentCollection(
   };
 }
 
-async function getCurrentMarketPricesByVariantId(variantIds: string[]) {
-  const uniqueVariantIds = Array.from(new Set(variantIds));
+async function getCurrentMarketPricesByVariantId(variants: (typeof cardVariants.$inferSelect)[]) {
+  const uniqueVariantsById = new Map(variants.map((variant) => [variant.id, variant]));
+  const uniqueVariantIds = Array.from(uniqueVariantsById.keys());
   const pricesByVariantId = new Map<string, number>();
 
   if (uniqueVariantIds.length === 0) return pricesByVariantId;
 
-  const priceRows = await measureDbQuery(
-    "db.collection_current_prices",
+  const poketracePriceRows = await measureDbQuery(
+    "db.collection_current_prices_poketrace",
     () =>
       db
         .select({
@@ -327,7 +328,7 @@ async function getCurrentMarketPricesByVariantId(variantIds: string[]) {
         .from(currentPrices)
         .where(
           and(
-            eq(currentPrices.source, "tcgcsv"),
+            eq(currentPrices.source, "poketrace_tcgplayer"),
             eq(currentPrices.priceType, "market"),
             eq(currentPrices.currency, "USD"),
             inArray(currentPrices.cardVariantId, uniqueVariantIds),
@@ -336,8 +337,52 @@ async function getCurrentMarketPricesByVariantId(variantIds: string[]) {
     { variantCount: uniqueVariantIds.length },
   );
 
-  for (const row of priceRows) {
+  for (const row of poketracePriceRows) {
     pricesByVariantId.set(row.cardVariantId, row.amountMinor / 100);
+  }
+
+  const variantsMissingPokeTrace = uniqueVariantIds
+    .filter((variantId) => !pricesByVariantId.has(variantId))
+    .map((variantId) => uniqueVariantsById.get(variantId))
+    .filter((variant): variant is typeof cardVariants.$inferSelect => Boolean(variant));
+
+  if (variantsMissingPokeTrace.length === 0) return pricesByVariantId;
+
+  const cardIds = Array.from(new Set(variantsMissingPokeTrace.map((variant) => variant.cardId)));
+  const printings = Array.from(new Set(variantsMissingPokeTrace.map((variant) => variant.printing)));
+  const fallbackRows = await measureDbQuery(
+    "db.collection_current_prices_tcgcsv_fallback",
+    () =>
+      db
+        .select({
+          cardId: cardVariants.cardId,
+          printing: cardVariants.printing,
+          amountMinor: currentPrices.amountMinor,
+        })
+        .from(currentPrices)
+        .innerJoin(cardVariants, eq(currentPrices.cardVariantId, cardVariants.id))
+        .where(
+          and(
+            eq(cardVariants.condition, "unspecified"),
+            eq(cardVariants.languageCode, "en"),
+            eq(currentPrices.source, "tcgcsv"),
+            eq(currentPrices.priceType, "market"),
+            eq(currentPrices.currency, "USD"),
+            inArray(cardVariants.cardId, cardIds),
+            inArray(cardVariants.printing, printings),
+          ),
+        ),
+    { variantCount: variantsMissingPokeTrace.length },
+  );
+  const fallbackPricesByCardPrinting = new Map(
+    fallbackRows.map((row) => [`${row.cardId}:${row.printing}`, row.amountMinor / 100]),
+  );
+
+  for (const variant of variantsMissingPokeTrace) {
+    const fallbackPrice = fallbackPricesByCardPrinting.get(`${variant.cardId}:${variant.printing}`);
+    if (fallbackPrice !== undefined) {
+      pricesByVariantId.set(variant.id, fallbackPrice);
+    }
   }
 
   return pricesByVariantId;
