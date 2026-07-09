@@ -16,7 +16,7 @@
     "poketrace:probe": "node scripts/probe-poketrace.mjs",
     "poketrace:reconcile-refs": "node scripts/reconcile-poketrace-refs.mjs",
     "prices:refresh:poketrace": "node scripts/refresh-prices-poketrace.mjs",
-    "prices:refresh": "node scripts/refresh-prices-tcgcsv.mjs",
+    "prices:refresh": "node scripts/refresh-prices-poketrace.mjs",
     "db:test-rls": "node scripts/test-rls.mjs",
     "db:push": "drizzle-kit push",
     "db:studio": "drizzle-kit studio"

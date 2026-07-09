@@ -189,27 +189,12 @@ async function queryLocalSearchPage(input: {
 }) {
   const whereSearch = localSearchConditions(input);
   const offset = (input.page - 1) * input.pageSize;
-  const currentMarketPriceByCard = currentMarketPriceByCardSubquery();
   const relevanceOrderBy = [
     asc(cards.name),
     getCardNumberOrderSql(),
     asc(cards.number),
     asc(cards.providerId),
   ];
-  const orderBy =
-    input.sort === "price-desc"
-      ? [
-          sql`case when ${currentMarketPriceByCard.amountMinor} is null then 1 else 0 end`,
-          desc(currentMarketPriceByCard.amountMinor),
-          ...relevanceOrderBy,
-        ]
-      : input.sort === "price-asc"
-        ? [
-            sql`case when ${currentMarketPriceByCard.amountMinor} is null then 1 else 0 end`,
-            asc(currentMarketPriceByCard.amountMinor),
-            ...relevanceOrderBy,
-          ]
-        : relevanceOrderBy;
   const [totalRow] = await measureDbQuery(
     "db.catalog_search_count",
     () =>
@@ -226,6 +211,32 @@ async function queryLocalSearchPage(input: {
     return { rows: [], totalCount };
   }
 
+  if (input.sort === "price-desc" || input.sort === "price-asc") {
+    const currentMarketPriceByCard = currentMarketPriceByCardSubquery();
+    const orderBy = [
+      sql`case when ${currentMarketPriceByCard.amountMinor} is null then 1 else 0 end`,
+      input.sort === "price-desc" ? desc(currentMarketPriceByCard.amountMinor) : asc(currentMarketPriceByCard.amountMinor),
+      ...relevanceOrderBy,
+    ];
+
+    const rows = await measureDbQuery(
+      "db.catalog_search_rows",
+      () =>
+        db
+          .select({ card: cards, set: cardSets })
+          .from(cards)
+          .innerJoin(cardSets, eq(cards.setId, cardSets.id))
+          .leftJoin(currentMarketPriceByCard, eq(currentMarketPriceByCard.cardId, cards.id))
+          .where(whereSearch)
+          .orderBy(...orderBy)
+          .limit(input.pageSize)
+          .offset(offset),
+      { strategy: input.strategy, page: input.page, pageSize: input.pageSize, sort: input.sort },
+    );
+
+    return { rows, totalCount };
+  }
+
   const rows = await measureDbQuery(
     "db.catalog_search_rows",
     () =>
@@ -233,9 +244,8 @@ async function queryLocalSearchPage(input: {
         .select({ card: cards, set: cardSets })
         .from(cards)
         .innerJoin(cardSets, eq(cards.setId, cardSets.id))
-        .leftJoin(currentMarketPriceByCard, eq(currentMarketPriceByCard.cardId, cards.id))
         .where(whereSearch)
-        .orderBy(...orderBy)
+        .orderBy(...relevanceOrderBy)
         .limit(input.pageSize)
         .offset(offset),
     { strategy: input.strategy, page: input.page, pageSize: input.pageSize, sort: input.sort },
@@ -253,7 +263,6 @@ async function queryLocalClosestMatches(input: {
 }) {
   const normalizedName = normalizeSearchText(input.name);
   const offset = (input.page - 1) * input.pageSize;
-  const currentMarketPriceByCard = currentMarketPriceByCardSubquery();
   const similarityScore = sql<number>`greatest(
     similarity(${normalizedCardNameSql()}, ${normalizedName}),
     word_similarity(${normalizedCardNameSql()}, ${normalizedName})
@@ -265,20 +274,6 @@ async function queryLocalClosestMatches(input: {
     asc(cards.number),
     asc(cards.providerId),
   ];
-  const orderBy =
-    input.sort === "price-desc"
-      ? [
-          sql`case when ${currentMarketPriceByCard.amountMinor} is null then 1 else 0 end`,
-          desc(currentMarketPriceByCard.amountMinor),
-          ...relevanceOrderBy,
-        ]
-      : input.sort === "price-asc"
-        ? [
-            sql`case when ${currentMarketPriceByCard.amountMinor} is null then 1 else 0 end`,
-            asc(currentMarketPriceByCard.amountMinor),
-            ...relevanceOrderBy,
-          ]
-        : relevanceOrderBy;
   const whereClosest = and(
     eq(cards.languageCode, "en"),
     eq(cards.isActive, true),
@@ -303,6 +298,32 @@ async function queryLocalClosestMatches(input: {
     return { rows: [], totalCount };
   }
 
+  if (input.sort === "price-desc" || input.sort === "price-asc") {
+    const currentMarketPriceByCard = currentMarketPriceByCardSubquery();
+    const orderBy = [
+      sql`case when ${currentMarketPriceByCard.amountMinor} is null then 1 else 0 end`,
+      input.sort === "price-desc" ? desc(currentMarketPriceByCard.amountMinor) : asc(currentMarketPriceByCard.amountMinor),
+      ...relevanceOrderBy,
+    ];
+
+    const rows = await measureDbQuery(
+      "db.catalog_closest_rows",
+      () =>
+        db
+          .select({ card: cards, set: cardSets })
+          .from(cards)
+          .innerJoin(cardSets, eq(cards.setId, cardSets.id))
+          .leftJoin(currentMarketPriceByCard, eq(currentMarketPriceByCard.cardId, cards.id))
+          .where(whereClosest)
+          .orderBy(...orderBy)
+          .limit(input.pageSize)
+          .offset(offset),
+      { page: input.page, pageSize: input.pageSize, sort: input.sort },
+    );
+
+    return { rows, totalCount };
+  }
+
   const rows = await measureDbQuery(
     "db.catalog_closest_rows",
     () =>
@@ -310,9 +331,8 @@ async function queryLocalClosestMatches(input: {
         .select({ card: cards, set: cardSets })
         .from(cards)
         .innerJoin(cardSets, eq(cards.setId, cardSets.id))
-        .leftJoin(currentMarketPriceByCard, eq(currentMarketPriceByCard.cardId, cards.id))
         .where(whereClosest)
-        .orderBy(...orderBy)
+        .orderBy(...relevanceOrderBy)
         .limit(input.pageSize)
         .offset(offset),
     { page: input.page, pageSize: input.pageSize, sort: input.sort },
@@ -336,9 +356,9 @@ async function mapCardSearchRows(
 
 async function getCurrentMarketPricesByCardId(cardIds: string[]) {
   const uniqueCardIds = Array.from(new Set(cardIds));
-  const pricesByCardId = new Map<string, number>();
+  const pricesByCardId = new Map<string, { anyPrice: number | null; nearMintPrice: number | null }>();
 
-  if (uniqueCardIds.length === 0) return pricesByCardId;
+  if (uniqueCardIds.length === 0) return new Map<string, number>();
 
   const priceRows = await measureDbQuery(
     "db.catalog_current_prices_by_card",
@@ -346,16 +366,18 @@ async function getCurrentMarketPricesByCardId(cardIds: string[]) {
       db
         .select({
           cardId: cardVariants.cardId,
+          condition: cardVariants.condition,
           amountMinor: currentPrices.amountMinor,
         })
-        .from(currentPrices)
-        .innerJoin(cardVariants, eq(currentPrices.cardVariantId, cardVariants.id))
+        .from(cardVariants)
+        .innerJoin(currentPrices, eq(currentPrices.cardVariantId, cardVariants.id))
         .where(
           and(
-            eq(currentPrices.source, "tcgcsv"),
+            inArray(cardVariants.cardId, uniqueCardIds),
+            eq(cardVariants.languageCode, "en"),
+            eq(currentPrices.source, "poketrace_tcgplayer"),
             eq(currentPrices.priceType, "market"),
             eq(currentPrices.currency, "USD"),
-            inArray(cardVariants.cardId, uniqueCardIds),
           ),
         ),
     { cardCount: uniqueCardIds.length },
@@ -363,34 +385,80 @@ async function getCurrentMarketPricesByCardId(cardIds: string[]) {
 
   for (const row of priceRows) {
     const amountUsd = row.amountMinor / 100;
-    const existingAmount = pricesByCardId.get(row.cardId);
+    const existing = pricesByCardId.get(row.cardId) ?? {
+      anyPrice: null,
+      nearMintPrice: null,
+    };
 
-    if (existingAmount === undefined || amountUsd < existingAmount) {
-      pricesByCardId.set(row.cardId, amountUsd);
+    if (existing.anyPrice === null || amountUsd < existing.anyPrice) {
+      existing.anyPrice = amountUsd;
     }
+
+    if (row.condition === "near_mint" && (existing.nearMintPrice === null || amountUsd < existing.nearMintPrice)) {
+      existing.nearMintPrice = amountUsd;
+    }
+
+    pricesByCardId.set(row.cardId, existing);
   }
 
-  return pricesByCardId;
+  return new Map(
+    Array.from(pricesByCardId, ([cardId, prices]) => [
+      cardId,
+      prices.nearMintPrice ?? prices.anyPrice,
+    ]).filter((entry): entry is [string, number] => entry[1] !== null),
+  );
 }
 
 function currentMarketPriceByCardSubquery() {
   return db
     .select({
       cardId: cardVariants.cardId,
-      amountMinor: sql<number>`min(${currentPrices.amountMinor})`.as("amount_minor"),
+      amountMinor: sql<number>`coalesce(
+        min(${currentPrices.amountMinor}) filter (where ${cardVariants.condition} = 'near_mint'),
+        min(${currentPrices.amountMinor})
+      )`.as("amount_minor"),
     })
-    .from(currentPrices)
-    .innerJoin(cardVariants, eq(currentPrices.cardVariantId, cardVariants.id))
+    .from(cardVariants)
+    .innerJoin(currentPrices, eq(currentPrices.cardVariantId, cardVariants.id))
     .where(
       and(
-        eq(currentPrices.source, "tcgcsv"),
+        eq(cardVariants.languageCode, "en"),
+        eq(currentPrices.source, "poketrace_tcgplayer"),
         eq(currentPrices.priceType, "market"),
         eq(currentPrices.currency, "USD"),
-        eq(cardVariants.languageCode, "en"),
       ),
     )
     .groupBy(cardVariants.cardId)
     .as("current_market_price_by_card");
+}
+
+function currentMarketPriceBySetCardSubquery(setProviderId: string) {
+  return db
+    .select({
+      cardId: cardVariants.cardId,
+      amountMinor: sql<number>`coalesce(
+        min(${currentPrices.amountMinor}) filter (where ${cardVariants.condition} = 'near_mint'),
+        min(${currentPrices.amountMinor})
+      )`.as("amount_minor"),
+    })
+    .from(cardVariants)
+    .innerJoin(cards, eq(cardVariants.cardId, cards.id))
+    .innerJoin(cardSets, eq(cards.setId, cardSets.id))
+    .innerJoin(currentPrices, eq(currentPrices.cardVariantId, cardVariants.id))
+    .where(
+      and(
+        eq(cardSets.providerId, setProviderId),
+        eq(cardSets.isActive, true),
+        eq(cards.languageCode, "en"),
+        eq(cards.isActive, true),
+        eq(cardVariants.languageCode, "en"),
+        eq(currentPrices.source, "poketrace_tcgplayer"),
+        eq(currentPrices.priceType, "market"),
+        eq(currentPrices.currency, "USD"),
+      ),
+    )
+    .groupBy(cardVariants.cardId)
+    .as("current_market_price_by_set_card");
 }
 
 function getCardNumberOrderSql() {
@@ -414,9 +482,9 @@ async function getCurrentPricesForCardId(cardId: string) {
     .where(
       and(
         eq(cardVariants.cardId, cardId),
-        eq(cardVariants.condition, "unspecified"),
+        eq(cardVariants.condition, "near_mint"),
         eq(cardVariants.languageCode, "en"),
-        eq(currentPrices.source, "tcgcsv"),
+        eq(currentPrices.source, "poketrace_tcgplayer"),
         eq(currentPrices.currency, "USD"),
       ),
     );
@@ -499,22 +567,7 @@ export const getCatalogPokemonCardsBySetPage = cache(async (input: {
       eq(cards.isActive, true),
       eq(cardSets.isActive, true),
     );
-    const currentMarketPriceByCard = currentMarketPriceByCardSubquery();
     const tieBreakSort = [getCardNumberOrderSql(), asc(cards.number), asc(cards.name), asc(cards.providerId)];
-    const orderBy =
-      sort === "price-desc"
-        ? [
-            sql`case when ${currentMarketPriceByCard.amountMinor} is null then 1 else 0 end`,
-            desc(currentMarketPriceByCard.amountMinor),
-            ...tieBreakSort,
-          ]
-        : sort === "price-asc"
-          ? [
-              sql`case when ${currentMarketPriceByCard.amountMinor} is null then 1 else 0 end`,
-              asc(currentMarketPriceByCard.amountMinor),
-              ...tieBreakSort,
-            ]
-          : tieBreakSort;
     const [totalRow] = await measureDbQuery(
       "db.set_cards_count",
       () =>
@@ -529,6 +582,39 @@ export const getCatalogPokemonCardsBySetPage = cache(async (input: {
     const totalCount = totalRow?.count ?? 0;
 
     if (totalCount > 0) {
+      if (sort === "price-desc" || sort === "price-asc") {
+        const currentMarketPriceByCard = currentMarketPriceBySetCardSubquery(input.setId);
+        const orderBy = [
+          sql`case when ${currentMarketPriceByCard.amountMinor} is null then 1 else 0 end`,
+          sort === "price-desc" ? desc(currentMarketPriceByCard.amountMinor) : asc(currentMarketPriceByCard.amountMinor),
+          ...tieBreakSort,
+        ];
+
+        const rows = await measureDbQuery(
+          "db.set_cards_rows",
+          () =>
+            db
+              .select({ card: cards, set: cardSets })
+              .from(cards)
+              .innerJoin(cardSets, eq(cards.setId, cardSets.id))
+              .leftJoin(currentMarketPriceByCard, eq(currentMarketPriceByCard.cardId, cards.id))
+              .where(whereSet)
+              .orderBy(...orderBy)
+              .limit(pageSize)
+              .offset(offset),
+          { setId: input.setId, page, pageSize, sort },
+        );
+
+        return {
+          cards: await mapCardSearchRows(rows),
+          totalCount,
+          page,
+          pageSize,
+          sort,
+          totalPages: Math.ceil(totalCount / pageSize),
+        };
+      }
+
       const rows = await measureDbQuery(
         "db.set_cards_rows",
         () =>
@@ -536,9 +622,8 @@ export const getCatalogPokemonCardsBySetPage = cache(async (input: {
             .select({ card: cards, set: cardSets })
             .from(cards)
             .innerJoin(cardSets, eq(cards.setId, cardSets.id))
-            .leftJoin(currentMarketPriceByCard, eq(currentMarketPriceByCard.cardId, cards.id))
             .where(whereSet)
-            .orderBy(...orderBy)
+            .orderBy(...tieBreakSort)
             .limit(pageSize)
             .offset(offset),
         { setId: input.setId, page, pageSize, sort },

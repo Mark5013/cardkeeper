@@ -311,8 +311,7 @@ export async function getCurrentCollection(
 }
 
 async function getCurrentMarketPricesByVariantId(variants: (typeof cardVariants.$inferSelect)[]) {
-  const uniqueVariantsById = new Map(variants.map((variant) => [variant.id, variant]));
-  const uniqueVariantIds = Array.from(uniqueVariantsById.keys());
+  const uniqueVariantIds = Array.from(new Set(variants.map((variant) => variant.id)));
   const pricesByVariantId = new Map<string, number>();
 
   if (uniqueVariantIds.length === 0) return pricesByVariantId;
@@ -339,50 +338,6 @@ async function getCurrentMarketPricesByVariantId(variants: (typeof cardVariants.
 
   for (const row of poketracePriceRows) {
     pricesByVariantId.set(row.cardVariantId, row.amountMinor / 100);
-  }
-
-  const variantsMissingPokeTrace = uniqueVariantIds
-    .filter((variantId) => !pricesByVariantId.has(variantId))
-    .map((variantId) => uniqueVariantsById.get(variantId))
-    .filter((variant): variant is typeof cardVariants.$inferSelect => Boolean(variant));
-
-  if (variantsMissingPokeTrace.length === 0) return pricesByVariantId;
-
-  const cardIds = Array.from(new Set(variantsMissingPokeTrace.map((variant) => variant.cardId)));
-  const printings = Array.from(new Set(variantsMissingPokeTrace.map((variant) => variant.printing)));
-  const fallbackRows = await measureDbQuery(
-    "db.collection_current_prices_tcgcsv_fallback",
-    () =>
-      db
-        .select({
-          cardId: cardVariants.cardId,
-          printing: cardVariants.printing,
-          amountMinor: currentPrices.amountMinor,
-        })
-        .from(currentPrices)
-        .innerJoin(cardVariants, eq(currentPrices.cardVariantId, cardVariants.id))
-        .where(
-          and(
-            eq(cardVariants.condition, "unspecified"),
-            eq(cardVariants.languageCode, "en"),
-            eq(currentPrices.source, "tcgcsv"),
-            eq(currentPrices.priceType, "market"),
-            eq(currentPrices.currency, "USD"),
-            inArray(cardVariants.cardId, cardIds),
-            inArray(cardVariants.printing, printings),
-          ),
-        ),
-    { variantCount: variantsMissingPokeTrace.length },
-  );
-  const fallbackPricesByCardPrinting = new Map(
-    fallbackRows.map((row) => [`${row.cardId}:${row.printing}`, row.amountMinor / 100]),
-  );
-
-  for (const variant of variantsMissingPokeTrace) {
-    const fallbackPrice = fallbackPricesByCardPrinting.get(`${variant.cardId}:${variant.printing}`);
-    if (fallbackPrice !== undefined) {
-      pricesByVariantId.set(variant.id, fallbackPrice);
-    }
   }
 
   return pricesByVariantId;
