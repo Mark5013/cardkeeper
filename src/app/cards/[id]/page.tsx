@@ -141,7 +141,7 @@ export default async function CardDetailPage({ params }: PageProps<"/cards/[id]"
       <div className="hero-glow" aria-hidden="true" />
       <SiteHeader />
 
-      <article className="mx-auto w-full max-w-6xl px-6 pb-24 pt-6 lg:px-8">
+      <article className="mx-auto w-full max-w-7xl px-6 pb-24 pt-6 lg:px-8">
         <Link className="text-sm font-semibold text-[var(--secondary)] hover:underline" href={`/sets/${encodeURIComponent(card.set.id)}`}>
           {card.set.name}
         </Link>
@@ -241,6 +241,11 @@ export default async function CardDetailPage({ params }: PageProps<"/cards/[id]"
             </section>
 
             <section className="detail-section">
+              <h2 className="detail-heading">Price history</h2>
+              <PriceHistoryChart series={priceHistory} />
+            </section>
+
+            <section className="detail-section">
               <div className="flex flex-wrap items-end justify-between gap-3">
                 <div>
                   <h2 className="detail-heading">Market prices</h2>
@@ -266,11 +271,6 @@ export default async function CardDetailPage({ params }: PageProps<"/cards/[id]"
                   <span>30-day average: <strong>{displayPrice(cardmarketPrices.avg30, eur)}</strong></span>
                 </div>
               ) : null}
-            </section>
-
-            <section className="detail-section">
-              <h2 className="detail-heading">Price history</h2>
-              <PriceHistoryChart series={priceHistory} />
             </section>
 
             {card.abilities?.length ? (

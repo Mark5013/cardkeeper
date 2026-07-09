@@ -13,6 +13,7 @@ import {
 
 import { CARD_CONDITIONS } from "@/lib/collection/options";
 import { formatPrinting } from "@/lib/pokemon-tcg/printing";
+import { FieldSelect } from "@/components/ui/field-select";
 
 type PriceHistoryPoint = {
   observedAt: string;
@@ -29,6 +30,19 @@ type PriceHistorySeries = {
 type ChartPoint = PriceHistoryPoint & {
   dateLabel: string;
   priceLabel: string;
+};
+
+type PriceHistorySummaryProps = {
+  conditions: Array<(typeof CARD_CONDITIONS)[number]>;
+  latestPoint: ChartPoint;
+  printings: string[];
+  selectedCondition: string;
+  selectedPrinting: string;
+  selectedSeries: PriceHistorySeries;
+  setSelectedCondition: (condition: string) => void;
+  setSelectedPrinting: (printing: string) => void;
+  series: PriceHistorySeries[];
+  snapshotCount: number;
 };
 
 const usd = new Intl.NumberFormat("en-US", {
@@ -52,6 +66,10 @@ function formatDate(value: string) {
   return dateFormatter.format(new Date(value));
 }
 
+function formatCondition(value: string) {
+  return CARD_CONDITIONS.find((condition) => condition.value === value)?.label ?? value;
+}
+
 function PriceTooltip({
   active,
   payload,
@@ -68,6 +86,93 @@ function PriceTooltip({
       <p className="font-bold text-[var(--ink)]">{point.priceLabel}</p>
       <p className="mt-1 text-xs text-[var(--muted)]">{point.dateLabel}</p>
     </div>
+  );
+}
+
+function PriceHistorySummary({
+  conditions,
+  latestPoint,
+  printings,
+  selectedCondition,
+  selectedPrinting,
+  selectedSeries,
+  setSelectedCondition,
+  setSelectedPrinting,
+  series,
+  snapshotCount,
+}: PriceHistorySummaryProps) {
+  const printingOptions = printings.map((printing) => ({
+    value: printing,
+    label: formatPrinting(printing),
+  }));
+  const conditionOptions = conditions.map((condition) => ({
+    value: condition.value,
+    label: condition.label,
+  }));
+
+  return (
+    <aside className="rounded-lg border border-[var(--line)] bg-[var(--surface)] p-3">
+      <div>
+        <p className="text-xs font-bold uppercase tracking-[0.08em] text-[var(--muted)]">Current market</p>
+        <p className="mt-1.5 text-2xl font-black text-[var(--ink)]">{latestPoint.priceLabel}</p>
+        <p className="mt-1 text-xs text-[var(--muted)]">Latest snapshot: {latestPoint.dateLabel}</p>
+      </div>
+
+      <div className="mt-4 space-y-3">
+        <div>
+          <p className="text-xs font-bold uppercase tracking-[0.08em] text-[var(--muted)]">Finish</p>
+          {printings.length > 1 ? (
+            <div className="mt-1.5">
+              <FieldSelect
+                label="Price history finish"
+                options={printingOptions}
+                value={selectedSeries.printing}
+                onValueChange={(printing) => {
+                  const nextSeries =
+                    series.find((item) => item.printing === printing && item.condition === selectedCondition) ??
+                    series.find((item) => item.printing === printing);
+                  setSelectedPrinting(printing);
+                  setSelectedCondition(nextSeries?.condition ?? "");
+                }}
+              />
+            </div>
+          ) : (
+            <p className="mt-1.5 rounded-lg border border-[var(--line)] px-3 py-2 text-sm font-bold text-[var(--ink)]">
+              {formatPrinting(selectedPrinting)}
+            </p>
+          )}
+        </div>
+
+        <div>
+          <p className="text-xs font-bold uppercase tracking-[0.08em] text-[var(--muted)]">Condition</p>
+          {conditions.length > 1 ? (
+            <div className="mt-1.5">
+              <FieldSelect
+                label="Price history condition"
+                options={conditionOptions}
+                value={selectedSeries.condition}
+                onValueChange={setSelectedCondition}
+              />
+            </div>
+          ) : (
+            <p className="mt-1.5 rounded-lg border border-[var(--line)] px-3 py-2 text-sm font-bold text-[var(--ink)]">
+              {formatCondition(selectedSeries.condition)}
+            </p>
+          )}
+        </div>
+      </div>
+
+      <div className="mt-4 border-t border-[var(--line)] pt-3 text-xs text-[var(--muted)]">
+        <p className="truncate font-semibold text-[var(--ink)]" title={selectedSeries.label}>
+          {selectedSeries.label}
+        </p>
+        <p className="mt-1">
+          {snapshotCount === 1
+            ? "1 market snapshot so far"
+            : `${snapshotCount.toLocaleString()} market snapshots`}
+        </p>
+      </div>
+    </aside>
   );
 }
 
@@ -88,11 +193,13 @@ export function PriceHistoryChart({ series }: { series: PriceHistorySeries[] }) 
     series.find((item) => item.printing === selectedPrinting) ??
     initialSeries;
   const points = useMemo<ChartPoint[]>(() => {
-    return (selectedSeries?.points ?? []).map((point) => ({
-      ...point,
-      dateLabel: formatDate(point.observedAt),
-      priceLabel: usd.format(point.amountUsd),
-    }));
+    return [...(selectedSeries?.points ?? [])]
+      .sort((first, second) => new Date(first.observedAt).getTime() - new Date(second.observedAt).getTime())
+      .map((point) => ({
+        ...point,
+        dateLabel: formatDate(point.observedAt),
+        priceLabel: usd.format(point.amountUsd),
+      }));
   }, [selectedSeries]);
 
   if (!selectedSeries || points.length === 0) {
@@ -106,61 +213,11 @@ export function PriceHistoryChart({ series }: { series: PriceHistorySeries[] }) 
   const minPrice = Math.min(...points.map((point) => point.amountUsd));
   const maxPrice = Math.max(...points.map((point) => point.amountUsd));
   const domainPadding = Math.max((maxPrice - minPrice) * 0.12, maxPrice * 0.08, 1);
+  const latestPoint = points[points.length - 1];
 
   return (
-    <>
-      <div className="mt-4 space-y-3">
-        <div className="min-w-0">
-          <p className="text-sm font-semibold text-[var(--accent)]">{selectedSeries.label}</p>
-          <p className="mt-1 text-xs text-[var(--muted)]">
-            {points.length === 1
-              ? "1 market snapshot so far"
-              : `${points.length.toLocaleString()} market snapshots`}
-          </p>
-        </div>
-
-        <div className="flex max-w-full flex-col gap-2">
-          {printings.length > 1 ? (
-            <div className="flex flex-wrap gap-2">
-              {printings.map((printing) => (
-                <button
-                  className="min-w-24 rounded-full border border-[var(--line)] px-3 py-1 text-center text-xs font-bold text-[var(--muted)] transition hover:border-[var(--secondary)] hover:text-[var(--secondary)] data-[active=true]:border-[var(--secondary)] data-[active=true]:bg-[rgb(143_183_255_/_10%)] data-[active=true]:text-[var(--secondary)]"
-                  data-active={printing === selectedSeries.printing}
-                  key={printing}
-                  type="button"
-                  onClick={() => {
-                    const nextSeries =
-                      series.find((item) => item.printing === printing && item.condition === selectedCondition) ??
-                      series.find((item) => item.printing === printing);
-                    setSelectedPrinting(printing);
-                    setSelectedCondition(nextSeries?.condition ?? "");
-                  }}
-                >
-                  {formatPrinting(printing)}
-                </button>
-              ))}
-            </div>
-          ) : null}
-
-          {conditions.length > 1 ? (
-            <div className="grid grid-cols-2 gap-2 sm:flex sm:flex-wrap">
-              {conditions.map((condition) => (
-                <button
-                  className="min-w-32 rounded-full border border-[var(--line)] px-3 py-1 text-center text-xs font-bold text-[var(--muted)] transition hover:border-[var(--secondary)] hover:text-[var(--secondary)] data-[active=true]:border-[var(--secondary)] data-[active=true]:bg-[rgb(143_183_255_/_10%)] data-[active=true]:text-[var(--secondary)]"
-                  data-active={condition.value === selectedSeries.condition}
-                  key={condition.value}
-                  type="button"
-                  onClick={() => setSelectedCondition(condition.value)}
-                >
-                  {condition.label}
-                </button>
-              ))}
-            </div>
-          ) : null}
-        </div>
-      </div>
-
-      <div className="mt-4 rounded-lg border border-[var(--line)] bg-[var(--surface)] p-4">
+    <div className="mt-4 grid gap-4 2xl:grid-cols-[minmax(0,1fr)_14rem]">
+      <div className="rounded-lg border border-[var(--line)] bg-[var(--surface)] p-4">
         <div className="h-72 w-full">
           <ResponsiveContainer width="100%" height="100%">
             <LineChart data={points} margin={{ top: 12, right: 16, bottom: 12, left: 4 }}>
@@ -198,7 +255,20 @@ export function PriceHistoryChart({ series }: { series: PriceHistorySeries[] }) 
           </ResponsiveContainer>
         </div>
       </div>
-    </>
+
+      <PriceHistorySummary
+        conditions={conditions}
+        latestPoint={latestPoint}
+        printings={printings}
+        selectedCondition={selectedCondition}
+        selectedPrinting={selectedPrinting}
+        selectedSeries={selectedSeries}
+        setSelectedCondition={setSelectedCondition}
+        setSelectedPrinting={setSelectedPrinting}
+        series={series}
+        snapshotCount={points.length}
+      />
+    </div>
   );
 }
 
