@@ -201,7 +201,7 @@ export function CollectionControls({
       </div>
 
       <p className="mt-3 text-xs leading-5 text-[var(--muted)]">
-        The marketplace price reflects finish, but the Pokemon TCG API does not provide condition-specific prices.
+        Collection values use condition-specific marketplace prices when available.
       </p>
 
       {message ? (

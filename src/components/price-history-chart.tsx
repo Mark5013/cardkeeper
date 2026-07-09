@@ -11,6 +11,9 @@ import {
   YAxis,
 } from "recharts";
 
+import { CARD_CONDITIONS } from "@/lib/collection/options";
+import { formatPrinting } from "@/lib/pokemon-tcg/printing";
+
 type PriceHistoryPoint = {
   observedAt: string;
   amountUsd: number;
@@ -18,6 +21,7 @@ type PriceHistoryPoint = {
 
 type PriceHistorySeries = {
   printing: string;
+  condition: string;
   label: string;
   points: PriceHistoryPoint[];
 };
@@ -68,8 +72,21 @@ function PriceTooltip({
 }
 
 export function PriceHistoryChart({ series }: { series: PriceHistorySeries[] }) {
-  const [selectedPrinting, setSelectedPrinting] = useState(series[0]?.printing ?? "");
-  const selectedSeries = series.find((item) => item.printing === selectedPrinting) ?? series[0];
+  const initialSeries = getPreferredSeries(series);
+  const [selectedPrinting, setSelectedPrinting] = useState(initialSeries?.printing ?? "");
+  const [selectedCondition, setSelectedCondition] = useState(initialSeries?.condition ?? "");
+  const printings = useMemo(() => Array.from(new Set(series.map((item) => item.printing))), [series]);
+  const conditions = useMemo(
+    () =>
+      CARD_CONDITIONS.filter((condition) =>
+        series.some((item) => item.printing === selectedPrinting && item.condition === condition.value),
+      ),
+    [selectedPrinting, series],
+  );
+  const selectedSeries =
+    series.find((item) => item.printing === selectedPrinting && item.condition === selectedCondition) ??
+    series.find((item) => item.printing === selectedPrinting) ??
+    initialSeries;
   const points = useMemo<ChartPoint[]>(() => {
     return (selectedSeries?.points ?? []).map((point) => ({
       ...point,
@@ -91,9 +108,9 @@ export function PriceHistoryChart({ series }: { series: PriceHistorySeries[] }) 
   const domainPadding = Math.max((maxPrice - minPrice) * 0.12, maxPrice * 0.08, 1);
 
   return (
-    <div className="mt-4 rounded-lg border border-[var(--line)] bg-[var(--surface)] p-4">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div>
+    <>
+      <div className="mt-4 space-y-3">
+        <div className="min-w-0">
           <p className="text-sm font-semibold text-[var(--accent)]">{selectedSeries.label}</p>
           <p className="mt-1 text-xs text-[var(--muted)]">
             {points.length === 1
@@ -102,59 +119,89 @@ export function PriceHistoryChart({ series }: { series: PriceHistorySeries[] }) 
           </p>
         </div>
 
-        {series.length > 1 ? (
-          <div className="flex flex-wrap gap-2">
-            {series.map((item) => (
-              <button
-                className="rounded-full border border-[var(--line)] px-3 py-1 text-xs font-bold text-[var(--muted)] transition hover:border-[var(--secondary)] hover:text-[var(--secondary)] data-[active=true]:border-[var(--secondary)] data-[active=true]:bg-[rgb(143_183_255_/_10%)] data-[active=true]:text-[var(--secondary)]"
-                data-active={item.printing === selectedSeries.printing}
-                key={item.printing}
-                type="button"
-                onClick={() => setSelectedPrinting(item.printing)}
-              >
-                {item.label}
-              </button>
-            ))}
-          </div>
-        ) : null}
+        <div className="flex max-w-full flex-col gap-2">
+          {printings.length > 1 ? (
+            <div className="flex flex-wrap gap-2">
+              {printings.map((printing) => (
+                <button
+                  className="min-w-24 rounded-full border border-[var(--line)] px-3 py-1 text-center text-xs font-bold text-[var(--muted)] transition hover:border-[var(--secondary)] hover:text-[var(--secondary)] data-[active=true]:border-[var(--secondary)] data-[active=true]:bg-[rgb(143_183_255_/_10%)] data-[active=true]:text-[var(--secondary)]"
+                  data-active={printing === selectedSeries.printing}
+                  key={printing}
+                  type="button"
+                  onClick={() => {
+                    const nextSeries =
+                      series.find((item) => item.printing === printing && item.condition === selectedCondition) ??
+                      series.find((item) => item.printing === printing);
+                    setSelectedPrinting(printing);
+                    setSelectedCondition(nextSeries?.condition ?? "");
+                  }}
+                >
+                  {formatPrinting(printing)}
+                </button>
+              ))}
+            </div>
+          ) : null}
+
+          {conditions.length > 1 ? (
+            <div className="grid grid-cols-2 gap-2 sm:flex sm:flex-wrap">
+              {conditions.map((condition) => (
+                <button
+                  className="min-w-32 rounded-full border border-[var(--line)] px-3 py-1 text-center text-xs font-bold text-[var(--muted)] transition hover:border-[var(--secondary)] hover:text-[var(--secondary)] data-[active=true]:border-[var(--secondary)] data-[active=true]:bg-[rgb(143_183_255_/_10%)] data-[active=true]:text-[var(--secondary)]"
+                  data-active={condition.value === selectedSeries.condition}
+                  key={condition.value}
+                  type="button"
+                  onClick={() => setSelectedCondition(condition.value)}
+                >
+                  {condition.label}
+                </button>
+              ))}
+            </div>
+          ) : null}
+        </div>
       </div>
 
-      <div className="mt-5 h-72 w-full">
-        <ResponsiveContainer width="100%" height="100%">
-          <LineChart data={points} margin={{ top: 12, right: 16, bottom: 12, left: 4 }}>
-            <CartesianGrid stroke="var(--line)" strokeDasharray="4 4" vertical={false} />
-            <XAxis
-              dataKey="dateLabel"
-              tick={{ fill: "var(--muted)", fontSize: 12 }}
-              tickLine={false}
-              axisLine={{ stroke: "var(--line)" }}
-              minTickGap={24}
-            />
-            <YAxis
-              width={56}
-              tick={{ fill: "var(--muted)", fontSize: 12 }}
-              tickFormatter={(value) => compactUsd.format(Number(value))}
-              tickLine={false}
-              axisLine={{ stroke: "var(--line)" }}
-              domain={[Math.max(0, minPrice - domainPadding), maxPrice + domainPadding]}
-            />
-            <Tooltip
-              content={<PriceTooltip />}
-              cursor={{ stroke: "var(--secondary)", strokeWidth: 1.5, strokeDasharray: "4 4" }}
-            />
-            <Line
-              dataKey="amountUsd"
-              dot={{ fill: "var(--secondary)", r: 4, stroke: "var(--background)", strokeWidth: 2 }}
-              activeDot={{ fill: "var(--secondary-hover)", r: 6, stroke: "var(--background)", strokeWidth: 2 }}
-              isAnimationActive={false}
-              name="Market price"
-              stroke="var(--secondary)"
-              strokeWidth={3}
-              type="monotone"
-            />
-          </LineChart>
-        </ResponsiveContainer>
+      <div className="mt-4 rounded-lg border border-[var(--line)] bg-[var(--surface)] p-4">
+        <div className="h-72 w-full">
+          <ResponsiveContainer width="100%" height="100%">
+            <LineChart data={points} margin={{ top: 12, right: 16, bottom: 12, left: 4 }}>
+              <CartesianGrid stroke="var(--line)" strokeDasharray="4 4" vertical={false} />
+              <XAxis
+                dataKey="dateLabel"
+                tick={{ fill: "var(--muted)", fontSize: 12 }}
+                tickLine={false}
+                axisLine={{ stroke: "var(--line)" }}
+                minTickGap={24}
+              />
+              <YAxis
+                width={56}
+                tick={{ fill: "var(--muted)", fontSize: 12 }}
+                tickFormatter={(value) => compactUsd.format(Number(value))}
+                tickLine={false}
+                axisLine={{ stroke: "var(--line)" }}
+                domain={[Math.max(0, minPrice - domainPadding), maxPrice + domainPadding]}
+              />
+              <Tooltip
+                content={<PriceTooltip />}
+                cursor={{ stroke: "var(--secondary)", strokeWidth: 1.5, strokeDasharray: "4 4" }}
+              />
+              <Line
+                dataKey="amountUsd"
+                dot={{ fill: "var(--secondary)", r: 4, stroke: "var(--background)", strokeWidth: 2 }}
+                activeDot={{ fill: "var(--secondary-hover)", r: 6, stroke: "var(--background)", strokeWidth: 2 }}
+                isAnimationActive={false}
+                name="Market price"
+                stroke="var(--secondary)"
+                strokeWidth={3}
+                type="monotone"
+              />
+            </LineChart>
+          </ResponsiveContainer>
+        </div>
       </div>
-    </div>
+    </>
   );
+}
+
+function getPreferredSeries(series: PriceHistorySeries[]) {
+  return series.find((item) => item.condition === "near_mint") ?? series[0];
 }

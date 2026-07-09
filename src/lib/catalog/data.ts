@@ -23,6 +23,7 @@ import type {
   SetCardsPayload,
 } from "@/lib/pokemon-tcg/types";
 import { formatPrinting, getCardPrintingOptions } from "@/lib/pokemon-tcg/printing";
+import { CARD_CONDITIONS } from "@/lib/collection/options";
 import type { SearchCardSort } from "@/lib/catalog/search-card-sort";
 import type { SetCardSort } from "@/lib/catalog/set-card-sort";
 import { logError, measureDbQuery } from "@/lib/observability";
@@ -34,9 +35,14 @@ export type CardPriceHistoryPoint = {
 
 export type CardPriceHistorySeries = {
   printing: string;
+  condition: string;
   label: string;
   points: CardPriceHistoryPoint[];
 };
+
+function formatCondition(value: string) {
+  return CARD_CONDITIONS.find((condition) => condition.value === value)?.label ?? value;
+}
 
 function normalizeCardNumber(value: string) {
   return normalize(value).replace(/^#/, "");
@@ -590,6 +596,7 @@ export const getCatalogPokemonCardPriceHistory = cache(async (id: string) => {
     const rows = await db
       .select({
         printing: cardVariants.printing,
+        condition: cardVariants.condition,
         amountMinor: pricePoints.amountMinor,
         observedAt: pricePoints.observedAt,
       })
@@ -600,31 +607,36 @@ export const getCatalogPokemonCardPriceHistory = cache(async (id: string) => {
         and(
           eq(cards.providerId, id),
           eq(cards.languageCode, "en"),
-          eq(cardVariants.condition, "unspecified"),
           eq(cardVariants.languageCode, "en"),
-          eq(pricePoints.source, "tcgcsv"),
+          eq(pricePoints.source, "poketrace_tcgplayer"),
           eq(pricePoints.priceType, "market"),
           eq(pricePoints.currency, "USD"),
         ),
       )
-      .orderBy(asc(cardVariants.printing), asc(pricePoints.observedAt));
+      .orderBy(asc(cardVariants.printing), asc(cardVariants.condition), asc(pricePoints.observedAt));
 
-    const seriesByPrinting = new Map<string, CardPriceHistoryPoint[]>();
+    const seriesByVariant = new Map<string, CardPriceHistoryPoint[]>();
 
     for (const row of rows) {
-      const points = seriesByPrinting.get(row.printing) ?? [];
+      const key = `${row.printing}:${row.condition}`;
+      const points = seriesByVariant.get(key) ?? [];
       points.push({
         observedAt: row.observedAt.toISOString(),
         amountUsd: row.amountMinor / 100,
       });
-      seriesByPrinting.set(row.printing, points);
+      seriesByVariant.set(key, points);
     }
 
-    return Array.from(seriesByPrinting, ([printing, points]) => ({
-      printing,
-      label: formatPrinting(printing),
-      points,
-    }));
+    return Array.from(seriesByVariant, ([key, points]) => {
+      const [printing, condition] = key.split(":");
+
+      return {
+        printing,
+        condition,
+        label: `${formatPrinting(printing)} - ${formatCondition(condition)}`,
+        points,
+      };
+    });
   } catch (error) {
     logError("catalog.local_card_price_history.failed", error, { cardId: id });
     return [];

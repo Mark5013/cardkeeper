@@ -117,9 +117,11 @@ export default async function CardDetailPage({ params }: PageProps<"/cards/[id]"
 
   if (!card) notFound();
 
-  const ownedVariants = await getOwnedCardVariants(card.id);
-  const priceHistory = await getCatalogPokemonCardPriceHistory(card.id);
-  const ebayListings = await getEbayListingsForCard(card);
+  const [ownedVariants, priceHistory, ebayListings] = await Promise.all([
+    getOwnedCardVariants(card.id),
+    getCatalogPokemonCardPriceHistory(card.id),
+    getEbayListingsForCard(card),
+  ]);
   const printings = getCardPrintingOptions(card);
   const tcgplayerPrices = Object.entries(card.tcgplayer?.prices ?? {});
   const tcgplayerUrl = getSafeExternalUrl(card.tcgplayer?.url);

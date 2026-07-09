@@ -59,6 +59,7 @@ export type EbayListingsResult = {
 };
 
 let tokenCache: EbayToken | null = null;
+const DEFAULT_EBAY_TIMEOUT_MS = 1_500;
 
 function getEnvironment(): EbayEnvironment {
   return process.env.EBAY_ENVIRONMENT === "sandbox" ? "sandbox" : "production";
@@ -80,6 +81,11 @@ function getMarketplaceId() {
 
 function getScope() {
   return process.env.EBAY_OAUTH_SCOPE?.trim() || "https://api.ebay.com/oauth/api_scope";
+}
+
+function getRequestTimeoutMs() {
+  const value = Number(process.env.EBAY_REQUEST_TIMEOUT_MS);
+  return Number.isInteger(value) && value > 0 ? value : DEFAULT_EBAY_TIMEOUT_MS;
 }
 
 function formatAmount(amount: EbayAmount | undefined) {
@@ -127,6 +133,7 @@ async function getApplicationAccessToken() {
     },
     body,
     cache: "no-store",
+    signal: AbortSignal.timeout(getRequestTimeoutMs()),
   });
 
   if (!response.ok) {
@@ -207,6 +214,7 @@ export const getEbayListingsForCard = cache(async (
             "X-EBAY-C-MARKETPLACE-ID": getMarketplaceId(),
           },
           cache: "no-store",
+          signal: AbortSignal.timeout(getRequestTimeoutMs()),
         });
 
         if (!response.ok) {
