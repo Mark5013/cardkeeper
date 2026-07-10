@@ -63,8 +63,6 @@ async function refreshPokeTracePrices() {
     priceRowsPrepared: 0,
     currentPricesUpserted: 0,
     pricePointsInserted: 0,
-    poketraceRefsPrepared: 0,
-    poketraceRefsUpserted: 0,
   };
 
   console.log(
@@ -85,7 +83,6 @@ async function refreshPokeTracePrices() {
 
     const variantInputs = [];
     const priceInputs = [];
-    const poketraceRefInputs = [];
 
     for (const poketraceCard of poketraceCards) {
       const productId = String(poketraceCard.refs?.tcgplayerId ?? poketraceCard.tcgplayerId ?? "");
@@ -107,31 +104,11 @@ async function refreshPokeTracePrices() {
             languageCode: localRef.language_code,
           });
         }
-
-        if (poketraceCard.id) {
-          poketraceRefInputs.push({
-            cardId: localRef.card_id,
-            printing: localRef.printing,
-            source: "poketrace",
-            refType: "card_id",
-            refValue: String(poketraceCard.id),
-            metadata: {
-              tcgplayerProductId: productId,
-              poketraceName: poketraceCard.name,
-              poketraceCardNumber: poketraceCard.cardNumber,
-              poketraceSetName: poketraceCard.set?.name,
-              poketraceSetSlug: poketraceCard.set?.slug,
-              poketraceVariant: poketraceCard.variant,
-              poketraceLastUpdated: poketraceCard.lastUpdated,
-            },
-          });
-        }
       }
     }
 
     const variantIdsByKey = await ensureConditionVariants(variantInputs, options.dryRun);
     const priceRows = [];
-    const poketraceRefRows = [];
 
     for (const priceInput of priceInputs) {
       const variantId = variantIdsByKey.get(getVariantKey(priceInput));
@@ -147,44 +124,19 @@ async function refreshPokeTracePrices() {
       });
     }
 
-    for (const refInput of poketraceRefInputs) {
-      for (const condition of CONDITION_BY_TIER.values()) {
-        const variantId = variantIdsByKey.get(
-          getVariantKey({
-            cardId: refInput.cardId,
-            printing: refInput.printing,
-            condition,
-            languageCode: "en",
-          }),
-        );
-        if (!variantId) continue;
-
-        poketraceRefRows.push({
-          card_variant_id: variantId,
-          source: refInput.source,
-          ref_type: refInput.refType,
-          ref_value: refInput.refValue,
-          metadata: sql.json(refInput.metadata),
-        });
-      }
-    }
-
     stats.variantsEnsured += variantIdsByKey.size;
     stats.priceRowsPrepared += priceRows.length;
-    stats.poketraceRefsPrepared += poketraceRefRows.length;
 
     if (!options.dryRun) {
       const priceWriteStats = await writePrices(priceRows);
-      const refWriteStats = await writeExternalRefs(poketraceRefRows);
       stats.currentPricesUpserted += priceWriteStats.currentPricesUpserted;
       stats.pricePointsInserted += priceWriteStats.pricePointsInserted;
-      stats.poketraceRefsUpserted += refWriteStats.externalRefsUpserted;
     }
   }
 
   const elapsedSeconds = ((Date.now() - startedAt) / 1000).toFixed(1);
   console.log(
-    `PokeTrace price refresh complete in ${elapsedSeconds}s. ${stats.requestsMade.toLocaleString()} requests, ${stats.cardsReturned.toLocaleString()} cards returned, ${stats.productsMatched.toLocaleString()} products matched, ${stats.variantsEnsured.toLocaleString()} condition variants ensured, ${stats.priceRowsPrepared.toLocaleString()} prices prepared, ${stats.currentPricesUpserted.toLocaleString()} current prices upserted, ${stats.pricePointsInserted.toLocaleString()} price points inserted, ${stats.poketraceRefsPrepared.toLocaleString()} PokeTrace refs prepared, ${stats.poketraceRefsUpserted.toLocaleString()} PokeTrace refs upserted.`,
+    `PokeTrace price refresh complete in ${elapsedSeconds}s. ${stats.requestsMade.toLocaleString()} requests, ${stats.cardsReturned.toLocaleString()} cards returned, ${stats.productsMatched.toLocaleString()} products matched, ${stats.variantsEnsured.toLocaleString()} condition variants ensured, ${stats.priceRowsPrepared.toLocaleString()} prices prepared, ${stats.currentPricesUpserted.toLocaleString()} current prices upserted, ${stats.pricePointsInserted.toLocaleString()} price points inserted.`,
   );
 }
 
@@ -409,31 +361,6 @@ async function filterChangedPricePointRows(rows) {
   return rows.filter((row) => latestAmountsByKey.get(getPriceIdentityKey(row)) !== row.amount_minor);
 }
 
-async function writeExternalRefs(externalRefRecords) {
-  let externalRefsUpserted = 0;
-
-  for (const batch of chunk(dedupeExternalRefRecords(externalRefRecords), WRITE_BATCH_SIZE)) {
-    const rows = await sql`
-      insert into card_variant_external_refs ${sql(
-        batch,
-        "card_variant_id",
-        "source",
-        "ref_type",
-        "ref_value",
-        "metadata",
-      )}
-      on conflict (card_variant_id, source, ref_type, ref_value) do update set
-        metadata = excluded.metadata,
-        updated_at = now()
-      returning id
-    `;
-
-    externalRefsUpserted += rows.length;
-  }
-
-  return { externalRefsUpserted };
-}
-
 async function fetchPokeTraceCards(params) {
   await throttlePokeTraceRequest();
   const url = new URL(`${getBaseUrl()}/cards`);
@@ -563,14 +490,6 @@ function dedupePriceRows(rows) {
 
 function getPriceIdentityKey(row) {
   return `${row.card_variant_id}:${row.source}:${row.price_type}:${row.currency}`;
-}
-
-function dedupeExternalRefRecords(rows) {
-  const rowsByKey = new Map();
-  for (const row of rows) {
-    rowsByKey.set(`${row.card_variant_id}:${row.source}:${row.ref_type}:${row.ref_value}`, row);
-  }
-  return Array.from(rowsByKey.values());
 }
 
 function getVariantKey(input) {
