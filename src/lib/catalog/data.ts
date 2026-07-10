@@ -699,6 +699,26 @@ export const getCatalogPokemonCardPriceHistory = cache(async (id: string) => {
         ),
       )
       .orderBy(asc(cardVariants.printing), asc(cardVariants.condition), asc(pricePoints.observedAt));
+    const currentRows = await db
+      .select({
+        printing: cardVariants.printing,
+        condition: cardVariants.condition,
+        amountMinor: currentPrices.amountMinor,
+        observedAt: currentPrices.observedAt,
+      })
+      .from(currentPrices)
+      .innerJoin(cardVariants, eq(currentPrices.cardVariantId, cardVariants.id))
+      .innerJoin(cards, eq(cardVariants.cardId, cards.id))
+      .where(
+        and(
+          eq(cards.providerId, id),
+          eq(cards.languageCode, "en"),
+          eq(cardVariants.languageCode, "en"),
+          eq(currentPrices.source, "poketrace_tcgplayer"),
+          eq(currentPrices.priceType, "market"),
+          eq(currentPrices.currency, "USD"),
+        ),
+      );
 
     const seriesByVariant = new Map<string, CardPriceHistoryPoint[]>();
 
@@ -710,6 +730,22 @@ export const getCatalogPokemonCardPriceHistory = cache(async (id: string) => {
         amountUsd: row.amountMinor / 100,
       });
       seriesByVariant.set(key, points);
+    }
+
+    for (const row of currentRows) {
+      const key = `${row.printing}:${row.condition}`;
+      const points = seriesByVariant.get(key) ?? [];
+      const latestPoint = points.at(-1);
+      const latestPointTime = latestPoint ? new Date(latestPoint.observedAt).getTime() : 0;
+      const currentObservedAt = row.observedAt.toISOString();
+
+      if (!latestPoint || row.observedAt.getTime() > latestPointTime) {
+        points.push({
+          observedAt: currentObservedAt,
+          amountUsd: row.amountMinor / 100,
+        });
+        seriesByVariant.set(key, points);
+      }
     }
 
     return Array.from(seriesByVariant, ([key, points]) => {

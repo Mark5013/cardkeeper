@@ -10,26 +10,12 @@ import { getCatalogPokemonCard, getCatalogPokemonCardPriceHistory } from "@/lib/
 import { getOwnedCardVariants } from "@/lib/collection/data";
 import { getEbayListingsForCard, type EbayListing } from "@/lib/ebay/listings";
 import { getCardPrintingOptions } from "@/lib/pokemon-tcg/printing";
-import type { PokemonTcgPrice } from "@/lib/pokemon-tcg/types";
 
-const usd = new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" });
-const eur = new Intl.NumberFormat("en-US", { style: "currency", currency: "EUR" });
 const allowedTcgplayerLinkHosts = new Set([
   "prices.pokemontcg.io",
   "tcgplayer.com",
   "www.tcgplayer.com",
 ]);
-
-function titleCase(value: string) {
-  return value
-    .replace(/([a-z])([A-Z])/g, "$1 $2")
-    .replace(/[-_]/g, " ")
-    .replace(/\b\w/g, (letter) => letter.toUpperCase());
-}
-
-function displayPrice(price: number | undefined, formatter = usd) {
-  return typeof price === "number" ? formatter.format(price) : "—";
-}
 
 function getSafeExternalUrl(value: string | undefined) {
   if (!value) return null;
@@ -86,17 +72,6 @@ function EbayListingCard({ listing }: { listing: EbayListing }) {
   );
 }
 
-function PriceRow({ name, price }: { name: string; price: PokemonTcgPrice }) {
-  return (
-    <tr className="border-t border-[var(--line)]">
-      <th className="py-3 pr-4 text-left font-semibold">{titleCase(name)}</th>
-      <td className="px-3 py-3 text-right">{displayPrice(price.low)}</td>
-      <td className="px-3 py-3 text-right font-bold text-[var(--secondary)]">{displayPrice(price.market)}</td>
-      <td className="pl-3 py-3 text-right">{displayPrice(price.high)}</td>
-    </tr>
-  );
-}
-
 export async function generateMetadata({
   params,
 }: PageProps<"/cards/[id]">): Promise<Metadata> {
@@ -123,9 +98,7 @@ export default async function CardDetailPage({ params }: PageProps<"/cards/[id]"
     getEbayListingsForCard(card),
   ]);
   const printings = getCardPrintingOptions(card);
-  const tcgplayerPrices = Object.entries(card.tcgplayer?.prices ?? {});
   const tcgplayerUrl = getSafeExternalUrl(card.tcgplayer?.url);
-  const cardmarketPrices = card.cardmarket?.prices;
   const details = [
     ["Set", card.set.name],
     ["Series", card.set.series],
@@ -243,34 +216,6 @@ export default async function CardDetailPage({ params }: PageProps<"/cards/[id]"
             <section className="detail-section">
               <h2 className="detail-heading">Price history</h2>
               <PriceHistoryChart series={priceHistory} />
-            </section>
-
-            <section className="detail-section">
-              <div className="flex flex-wrap items-end justify-between gap-3">
-                <div>
-                  <h2 className="detail-heading">Market prices</h2>
-                  <p className="mt-1 text-sm text-[var(--muted)]">General marketplace prices, not yet condition-specific.</p>
-                </div>
-                {card.tcgplayer?.updatedAt ? <p className="text-xs text-[var(--muted)]">Updated {card.tcgplayer.updatedAt}</p> : null}
-              </div>
-
-              {tcgplayerPrices.length ? (
-                <div className="mt-4 overflow-x-auto">
-                  <table className="w-full min-w-[30rem] text-sm">
-                    <thead className="text-xs uppercase tracking-[0.1em] text-[var(--muted)]">
-                      <tr><th className="pb-3 text-left">Printing</th><th className="px-3 pb-3 text-right">Low</th><th className="px-3 pb-3 text-right">Market</th><th className="pb-3 pl-3 text-right">High</th></tr>
-                    </thead>
-                    <tbody>{tcgplayerPrices.map(([name, price]) => <PriceRow key={name} name={name} price={price} />)}</tbody>
-                  </table>
-                </div>
-              ) : <p className="mt-4 text-[var(--muted)]">No current TCGplayer prices are available.</p>}
-
-              {cardmarketPrices ? (
-                <div className="mt-5 flex flex-wrap gap-x-7 gap-y-2 rounded-lg border border-[var(--line)] bg-[var(--surface)] p-4 text-sm">
-                  <span>Cardmarket trend: <strong>{displayPrice(cardmarketPrices.trendPrice, eur)}</strong></span>
-                  <span>30-day average: <strong>{displayPrice(cardmarketPrices.avg30, eur)}</strong></span>
-                </div>
-              ) : null}
             </section>
 
             {card.abilities?.length ? (

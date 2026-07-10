@@ -168,8 +168,8 @@ function PriceHistorySummary({
         </p>
         <p className="mt-1">
           {snapshotCount === 1
-            ? "1 market snapshot so far"
-            : `${snapshotCount.toLocaleString()} market snapshots`}
+            ? "1 market price point"
+            : `${snapshotCount.toLocaleString()} market price points`}
         </p>
       </div>
     </aside>

@@ -22,7 +22,6 @@ const CONDITION_BY_TIER = new Map([
 
 const SOURCE_BY_PRICE_SOURCE = new Map([
   ["tcgplayer", "poketrace_tcgplayer"],
-  ["ebay", "poketrace_ebay"],
 ]);
 
 const options = parseArgs(process.argv.slice(2));
@@ -271,14 +270,10 @@ function getPriceRecordsForCard(poketraceCard, localRef, observedAt) {
 }
 
 function getAmountRecords(price) {
-  return [
-    ["market", price.avg],
-    ["low", price.low],
-    ["high", price.high],
-  ].flatMap(([priceType, amount]) => {
-    if (typeof amount !== "number" || !Number.isFinite(amount) || amount < 0) return [];
-    return [{ priceType, amountMinor: Math.round(amount * 100) }];
-  });
+  const amount = price.avg;
+  if (typeof amount !== "number" || !Number.isFinite(amount) || amount < 0) return [];
+
+  return [{ priceType: "market", amountMinor: Math.round(amount * 100) }];
 }
 
 async function ensureConditionVariants(variantInputs, dryRun) {
@@ -352,9 +347,11 @@ async function writePrices(priceRows) {
         updated_at = now()
       returning id
     `;
-    const pointRows = await sql`
+    const changedPointRows = await filterChangedPricePointRows(batch);
+    const pointRows = changedPointRows.length
+      ? await sql`
       insert into price_points ${sql(
-        batch,
+        changedPointRows,
         "card_variant_id",
         "source",
         "price_type",
@@ -364,13 +361,52 @@ async function writePrices(priceRows) {
       )}
       on conflict (card_variant_id, source, price_type, currency, observed_at) do nothing
       returning id
-    `;
+    `
+      : [];
 
     currentPricesUpserted += currentRows.length;
     pricePointsInserted += pointRows.length;
   }
 
   return { currentPricesUpserted, pricePointsInserted };
+}
+
+async function filterChangedPricePointRows(rows) {
+  const uniqueVariantIds = uniqueStrings(rows.map((row) => row.card_variant_id));
+  const uniqueSources = uniqueStrings(rows.map((row) => row.source));
+  const uniquePriceTypes = uniqueStrings(rows.map((row) => row.price_type));
+  const uniqueCurrencies = uniqueStrings(rows.map((row) => row.currency));
+  const latestAmountsByKey = new Map();
+
+  if (
+    uniqueVariantIds.length === 0 ||
+    uniqueSources.length === 0 ||
+    uniquePriceTypes.length === 0 ||
+    uniqueCurrencies.length === 0
+  ) {
+    return [];
+  }
+
+  const latestRows = await sql`
+    select distinct on (card_variant_id, source, price_type, currency)
+      card_variant_id,
+      source,
+      price_type,
+      currency,
+      amount_minor
+    from price_points
+    where card_variant_id in ${sql(uniqueVariantIds)}
+      and source in ${sql(uniqueSources)}
+      and price_type in ${sql(uniquePriceTypes)}
+      and currency in ${sql(uniqueCurrencies)}
+    order by card_variant_id, source, price_type, currency, observed_at desc
+  `;
+
+  for (const row of latestRows) {
+    latestAmountsByKey.set(getPriceIdentityKey(row), Number(row.amount_minor));
+  }
+
+  return rows.filter((row) => latestAmountsByKey.get(getPriceIdentityKey(row)) !== row.amount_minor);
 }
 
 async function writeExternalRefs(externalRefRecords) {
@@ -520,12 +556,13 @@ function dedupeVariantInputs(inputs) {
 function dedupePriceRows(rows) {
   const rowsByKey = new Map();
   for (const row of rows) {
-    rowsByKey.set(
-      `${row.card_variant_id}:${row.source}:${row.price_type}:${row.currency}:${row.observed_at.toISOString()}`,
-      row,
-    );
+    rowsByKey.set(`${getPriceIdentityKey(row)}:${row.observed_at.toISOString()}`, row);
   }
   return Array.from(rowsByKey.values());
+}
+
+function getPriceIdentityKey(row) {
+  return `${row.card_variant_id}:${row.source}:${row.price_type}:${row.currency}`;
 }
 
 function dedupeExternalRefRecords(rows) {
