@@ -41,6 +41,7 @@ export type CardPriceHistorySeries = {
 };
 
 function formatCondition(value: string) {
+  if (value === "unspecified") return "Market";
   return CARD_CONDITIONS.find((condition) => condition.value === value)?.label ?? value;
 }
 
@@ -375,7 +376,7 @@ async function getCurrentMarketPricesByCardId(cardIds: string[]) {
           and(
             inArray(cardVariants.cardId, uniqueCardIds),
             eq(cardVariants.languageCode, "en"),
-            eq(currentPrices.source, "poketrace_tcgplayer"),
+            eq(currentPrices.source, "tcgcsv"),
             eq(currentPrices.priceType, "market"),
             eq(currentPrices.currency, "USD"),
           ),
@@ -423,7 +424,7 @@ function currentMarketPriceByCardSubquery() {
     .where(
       and(
         eq(cardVariants.languageCode, "en"),
-        eq(currentPrices.source, "poketrace_tcgplayer"),
+        eq(currentPrices.source, "tcgcsv"),
         eq(currentPrices.priceType, "market"),
         eq(currentPrices.currency, "USD"),
       ),
@@ -452,7 +453,7 @@ function currentMarketPriceBySetCardSubquery(setProviderId: string) {
         eq(cards.languageCode, "en"),
         eq(cards.isActive, true),
         eq(cardVariants.languageCode, "en"),
-        eq(currentPrices.source, "poketrace_tcgplayer"),
+        eq(currentPrices.source, "tcgcsv"),
         eq(currentPrices.priceType, "market"),
         eq(currentPrices.currency, "USD"),
       ),
@@ -482,9 +483,9 @@ async function getCurrentPricesForCardId(cardId: string) {
     .where(
       and(
         eq(cardVariants.cardId, cardId),
-        eq(cardVariants.condition, "near_mint"),
+        eq(cardVariants.condition, "unspecified"),
         eq(cardVariants.languageCode, "en"),
-        eq(currentPrices.source, "poketrace_tcgplayer"),
+        eq(currentPrices.source, "tcgcsv"),
         eq(currentPrices.currency, "USD"),
       ),
     );
@@ -693,7 +694,8 @@ export const getCatalogPokemonCardPriceHistory = cache(async (id: string) => {
           eq(cards.providerId, id),
           eq(cards.languageCode, "en"),
           eq(cardVariants.languageCode, "en"),
-          eq(pricePoints.source, "poketrace_tcgplayer"),
+          eq(cardVariants.condition, "unspecified"),
+          eq(pricePoints.source, "tcgcsv"),
           eq(pricePoints.priceType, "market"),
           eq(pricePoints.currency, "USD"),
         ),
@@ -714,7 +716,8 @@ export const getCatalogPokemonCardPriceHistory = cache(async (id: string) => {
           eq(cards.providerId, id),
           eq(cards.languageCode, "en"),
           eq(cardVariants.languageCode, "en"),
-          eq(currentPrices.source, "poketrace_tcgplayer"),
+          eq(cardVariants.condition, "unspecified"),
+          eq(currentPrices.source, "tcgcsv"),
           eq(currentPrices.priceType, "market"),
           eq(currentPrices.currency, "USD"),
         ),

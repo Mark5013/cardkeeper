@@ -13,7 +13,7 @@ Cardkeeper is a Pokemon card collection manager built with Next.js, TypeScript, 
 - Dedicated search-results pages for ambiguous and closest matches
 - Broad submitted-search results with infinite scroll and shareable URLs
 - Clickable card results and full card-detail pages
-- Card images and imported PokeTrace-backed TCGplayer market prices
+- Card images and imported TCGCSV-backed TCGplayer market prices
 - Collection, variant, and historical pricing database schema
 - Supabase SSR browser/server clients and session-refresh proxy
 - Verified, non-cached authentication status endpoint
@@ -53,7 +53,6 @@ Add secrets to `.env.local`:
 POKEMON_TCG_API_KEY=your_key_here
 DATABASE_URL=postgresql://user:password@host:5432/database
 DATABASE_MAX_CONNECTIONS=1
-POKETRACE_API_KEY=your_poketrace_key_here
 ```
 
 Never prefix these values with `NEXT_PUBLIC_`; both must remain server-only.
@@ -79,7 +78,7 @@ Import or refresh the local English Pokemon TCG catalog:
 npm run catalog:import
 ```
 
-Refresh PokeTrace-backed TCGplayer prices into `current_prices` and `price_points`:
+Refresh TCGCSV-backed TCGplayer prices into `current_prices` and `price_points`:
 
 ```bash
 npm run prices:refresh
@@ -88,10 +87,10 @@ npm run prices:refresh
 The scheduled GitHub Action runs nightly with:
 
 ```bash
-npm run prices:refresh -- --all
+npm run prices:refresh -- --skip-if-current
 ```
 
-Configure `DATABASE_URL` and `POKETRACE_API_KEY` as GitHub Actions secrets before relying on the workflow.
+Configure `DATABASE_URL` as a GitHub Actions secret before relying on the workflow.
 
 Useful price refresh test runs:
 

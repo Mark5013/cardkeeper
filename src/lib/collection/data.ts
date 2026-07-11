@@ -311,33 +311,47 @@ export async function getCurrentCollection(
 }
 
 async function getCurrentMarketPricesByVariantId(variants: (typeof cardVariants.$inferSelect)[]) {
-  const uniqueVariantIds = Array.from(new Set(variants.map((variant) => variant.id)));
+  const uniqueCardIds = Array.from(new Set(variants.map((variant) => variant.cardId)));
+  const uniquePrintings = Array.from(new Set(variants.map((variant) => variant.printing)));
   const pricesByVariantId = new Map<string, number>();
 
-  if (uniqueVariantIds.length === 0) return pricesByVariantId;
+  if (uniqueCardIds.length === 0 || uniquePrintings.length === 0) return pricesByVariantId;
 
-  const poketracePriceRows = await measureDbQuery(
-    "db.collection_current_prices_poketrace",
+  const tcgcsvPriceRows = await measureDbQuery(
+    "db.collection_current_prices_tcgcsv",
     () =>
       db
         .select({
-          cardVariantId: currentPrices.cardVariantId,
+          cardId: cardVariants.cardId,
+          printing: cardVariants.printing,
           amountMinor: currentPrices.amountMinor,
         })
         .from(currentPrices)
+        .innerJoin(cardVariants, eq(currentPrices.cardVariantId, cardVariants.id))
         .where(
           and(
-            eq(currentPrices.source, "poketrace_tcgplayer"),
+            eq(currentPrices.source, "tcgcsv"),
             eq(currentPrices.priceType, "market"),
             eq(currentPrices.currency, "USD"),
-            inArray(currentPrices.cardVariantId, uniqueVariantIds),
+            eq(cardVariants.condition, "unspecified"),
+            eq(cardVariants.languageCode, "en"),
+            inArray(cardVariants.cardId, uniqueCardIds),
+            inArray(cardVariants.printing, uniquePrintings),
           ),
         ),
-    { variantCount: uniqueVariantIds.length },
+    { variantCount: variants.length },
   );
+  const pricesByCardPrinting = new Map<string, number>();
 
-  for (const row of poketracePriceRows) {
-    pricesByVariantId.set(row.cardVariantId, row.amountMinor / 100);
+  for (const row of tcgcsvPriceRows) {
+    pricesByCardPrinting.set(`${row.cardId}:${row.printing}`, row.amountMinor / 100);
+  }
+
+  for (const variant of variants) {
+    const amountUsd = pricesByCardPrinting.get(`${variant.cardId}:${variant.printing}`);
+    if (amountUsd !== undefined) {
+      pricesByVariantId.set(variant.id, amountUsd);
+    }
   }
 
   return pricesByVariantId;

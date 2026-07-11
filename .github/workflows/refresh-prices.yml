@@ -1,21 +1,21 @@
-name: Refresh PokeTrace prices
+name: Refresh TCGCSV prices
 
 on:
+  schedule:
+    - cron: "17 8 * * *"
   workflow_dispatch:
 
 concurrency:
-  group: refresh-poketrace-prices
+  group: refresh-tcgcsv-prices
   cancel-in-progress: false
 
 jobs:
   refresh:
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 30
     env:
       DATABASE_URL: ${{ secrets.DATABASE_URL }}
-      POKETRACE_API_KEY: ${{ secrets.POKETRACE_API_KEY }}
-      POKETRACE_BASE_URL: https://api.poketrace.com/v1
-      POKETRACE_REQUEST_DELAY_MS: 250
+      TCGCSV_USER_AGENT: Cardkeeper/0.1.0 (+https://github.com/Mark5013/cardkeeper)
 
     steps:
       - name: Check out repository
@@ -30,5 +30,5 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Refresh PokeTrace prices
-        run: npm run prices:refresh -- --all
+      - name: Refresh prices when TCGCSV has a newer build
+        run: npm run prices:refresh -- --skip-if-current
