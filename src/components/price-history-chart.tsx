@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo } from "react";
 import {
   CartesianGrid,
   Line,
@@ -10,10 +10,6 @@ import {
   XAxis,
   YAxis,
 } from "recharts";
-
-import { CARD_CONDITIONS } from "@/lib/collection/options";
-import { formatPrinting } from "@/lib/pokemon-tcg/printing";
-import { FieldSelect } from "@/components/ui/field-select";
 
 type PriceHistoryPoint = {
   observedAt: string;
@@ -33,15 +29,8 @@ type ChartPoint = PriceHistoryPoint & {
 };
 
 type PriceHistorySummaryProps = {
-  conditions: Array<(typeof CARD_CONDITIONS)[number]>;
   latestPoint: ChartPoint;
-  printings: string[];
-  selectedCondition: string;
-  selectedPrinting: string;
   selectedSeries: PriceHistorySeries;
-  setSelectedCondition: (condition: string) => void;
-  setSelectedPrinting: (printing: string) => void;
-  series: PriceHistorySeries[];
   snapshotCount: number;
 };
 
@@ -66,10 +55,6 @@ function formatDate(value: string) {
   return dateFormatter.format(new Date(value));
 }
 
-function formatCondition(value: string) {
-  return CARD_CONDITIONS.find((condition) => condition.value === value)?.label ?? value;
-}
-
 function PriceTooltip({
   active,
   payload,
@@ -90,76 +75,16 @@ function PriceTooltip({
 }
 
 function PriceHistorySummary({
-  conditions,
   latestPoint,
-  printings,
-  selectedCondition,
-  selectedPrinting,
   selectedSeries,
-  setSelectedCondition,
-  setSelectedPrinting,
-  series,
   snapshotCount,
 }: PriceHistorySummaryProps) {
-  const printingOptions = printings.map((printing) => ({
-    value: printing,
-    label: formatPrinting(printing),
-  }));
-  const conditionOptions = conditions.map((condition) => ({
-    value: condition.value,
-    label: condition.label,
-  }));
-
   return (
     <aside className="rounded-lg border border-[var(--line)] bg-[var(--surface)] p-3">
       <div>
         <p className="text-xs font-bold uppercase tracking-[0.08em] text-[var(--muted)]">Current market</p>
         <p className="mt-1.5 text-2xl font-black text-[var(--ink)]">{latestPoint.priceLabel}</p>
         <p className="mt-1 text-xs text-[var(--muted)]">Latest snapshot: {latestPoint.dateLabel}</p>
-      </div>
-
-      <div className="mt-4 space-y-3">
-        <div>
-          <p className="text-xs font-bold uppercase tracking-[0.08em] text-[var(--muted)]">Finish</p>
-          {printings.length > 1 ? (
-            <div className="mt-1.5">
-              <FieldSelect
-                label="Price history finish"
-                options={printingOptions}
-                value={selectedSeries.printing}
-                onValueChange={(printing) => {
-                  const nextSeries =
-                    series.find((item) => item.printing === printing && item.condition === selectedCondition) ??
-                    series.find((item) => item.printing === printing);
-                  setSelectedPrinting(printing);
-                  setSelectedCondition(nextSeries?.condition ?? "");
-                }}
-              />
-            </div>
-          ) : (
-            <p className="mt-1.5 rounded-lg border border-[var(--line)] px-3 py-2 text-sm font-bold text-[var(--ink)]">
-              {formatPrinting(selectedPrinting)}
-            </p>
-          )}
-        </div>
-
-        <div>
-          <p className="text-xs font-bold uppercase tracking-[0.08em] text-[var(--muted)]">Condition</p>
-          {conditions.length > 1 ? (
-            <div className="mt-1.5">
-              <FieldSelect
-                label="Price history condition"
-                options={conditionOptions}
-                value={selectedSeries.condition}
-                onValueChange={setSelectedCondition}
-              />
-            </div>
-          ) : (
-            <p className="mt-1.5 rounded-lg border border-[var(--line)] px-3 py-2 text-sm font-bold text-[var(--ink)]">
-              {formatCondition(selectedSeries.condition)}
-            </p>
-          )}
-        </div>
       </div>
 
       <div className="mt-4 border-t border-[var(--line)] pt-3 text-xs text-[var(--muted)]">
@@ -177,21 +102,7 @@ function PriceHistorySummary({
 }
 
 export function PriceHistoryChart({ series }: { series: PriceHistorySeries[] }) {
-  const initialSeries = getPreferredSeries(series);
-  const [selectedPrinting, setSelectedPrinting] = useState(initialSeries?.printing ?? "");
-  const [selectedCondition, setSelectedCondition] = useState(initialSeries?.condition ?? "");
-  const printings = useMemo(() => Array.from(new Set(series.map((item) => item.printing))), [series]);
-  const conditions = useMemo(
-    () =>
-      CARD_CONDITIONS.filter((condition) =>
-        series.some((item) => item.printing === selectedPrinting && item.condition === condition.value),
-      ),
-    [selectedPrinting, series],
-  );
-  const selectedSeries =
-    series.find((item) => item.printing === selectedPrinting && item.condition === selectedCondition) ??
-    series.find((item) => item.printing === selectedPrinting) ??
-    initialSeries;
+  const selectedSeries = getPreferredSeries(series);
   const points = useMemo<ChartPoint[]>(() => {
     return [...(selectedSeries?.points ?? [])]
       .sort((first, second) => new Date(first.observedAt).getTime() - new Date(second.observedAt).getTime())
@@ -257,15 +168,8 @@ export function PriceHistoryChart({ series }: { series: PriceHistorySeries[] }) 
       </div>
 
       <PriceHistorySummary
-        conditions={conditions}
         latestPoint={latestPoint}
-        printings={printings}
-        selectedCondition={selectedCondition}
-        selectedPrinting={selectedPrinting}
         selectedSeries={selectedSeries}
-        setSelectedCondition={setSelectedCondition}
-        setSelectedPrinting={setSelectedPrinting}
-        series={series}
         snapshotCount={points.length}
       />
     </div>
@@ -273,5 +177,5 @@ export function PriceHistoryChart({ series }: { series: PriceHistorySeries[] }) 
 }
 
 function getPreferredSeries(series: PriceHistorySeries[]) {
-  return series.find((item) => item.condition === "near_mint") ?? series[0];
+  return series.find((item) => item.condition === "unspecified") ?? series[0];
 }
