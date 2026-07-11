@@ -345,6 +345,7 @@ async function preparePriceRecordsForSet({
         cardId: localCard.id,
         printing,
         amountRecords,
+        productIds: [String(product.productId)],
       });
     }
   }
@@ -353,6 +354,10 @@ async function preparePriceRecordsForSet({
     Array.from(amountsByCardPrinting.values()),
     options.dryRun,
   );
+
+  if (!options.dryRun) {
+    await writeTcgplayerProductRefs(Array.from(amountsByCardPrinting.values()), variantIdsByCardPrinting);
+  }
 
   for (const priceInput of amountsByCardPrinting.values()) {
     const variantIds =
@@ -460,6 +465,7 @@ function mergeAmountRecordsByCardPrinting(amountsByCardPrinting, priceInput) {
     cardId: priceInput.cardId,
     printing: priceInput.printing,
     amountRecords: averageAmountRecords(existingInput.amountRecords, priceInput.amountRecords, existingInput.samples),
+    productIds: uniqueStrings([...existingInput.productIds, ...priceInput.productIds]),
     samples: existingInput.samples + 1,
   });
 }
@@ -743,6 +749,40 @@ async function writePrices(priceRecords) {
   }
 
   return { currentPricesUpserted, pricePointsInserted };
+}
+
+async function writeTcgplayerProductRefs(priceInputs, variantIdsByCardPrinting) {
+  const rows = priceInputs.flatMap((input) => {
+    const variantIds = variantIdsByCardPrinting.get(getCardPrintingKey(input.cardId, input.printing)) ?? [];
+
+    return variantIds.flatMap((cardVariantId) =>
+      input.productIds.map((productId) => ({
+        card_variant_id: cardVariantId,
+        source: "tcgplayer",
+        ref_type: "product_id",
+        ref_value: productId,
+        metadata: { url: `https://www.tcgplayer.com/product/${productId}/-?Language=English` },
+        updated_at: new Date(),
+      })),
+    );
+  });
+
+  for (const batch of chunk(rows, WRITE_BATCH_SIZE)) {
+    await sql`
+      insert into card_variant_external_refs ${sql(
+        batch,
+        "card_variant_id",
+        "source",
+        "ref_type",
+        "ref_value",
+        "metadata",
+        "updated_at",
+      )}
+      on conflict (card_variant_id, source, ref_type, ref_value) do update set
+        metadata = excluded.metadata,
+        updated_at = excluded.updated_at
+    `;
+  }
 }
 
 async function filterChangedPricePointRows(rows) {

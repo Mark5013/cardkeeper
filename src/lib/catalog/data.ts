@@ -4,7 +4,14 @@ import { cache } from "react";
 import { and, asc, desc, eq, inArray, sql } from "drizzle-orm";
 
 import { db } from "@/db";
-import { cards, cardSets, cardVariants, currentPrices, pricePoints } from "@/db/schema";
+import {
+  cards,
+  cardSets,
+  cardVariantExternalRefs,
+  cardVariants,
+  currentPrices,
+  pricePoints,
+} from "@/db/schema";
 import {
   getPokemonCard,
   getPokemonCardsBySetPage,
@@ -124,9 +131,17 @@ async function mapCardWithCurrentPrices(row: typeof cards.$inferSelect) {
 
   if (!providerCard) return null;
 
-  const currentPricesByPrinting = await getCurrentPricesForCardId(row.id);
+  const [currentPricesByPrinting, tcgplayerProductId] = await Promise.all([
+    getCurrentPricesForCardId(row.id),
+    getTcgplayerProductIdForCardId(row.id),
+  ]);
+  const tcgplayerUrl =
+    providerCard.tcgplayer?.url ||
+    (tcgplayerProductId
+      ? `https://www.tcgplayer.com/product/${encodeURIComponent(tcgplayerProductId)}/-?Language=English`
+      : "");
 
-  if (currentPricesByPrinting.size === 0) return providerCard;
+  if (currentPricesByPrinting.size === 0 && !tcgplayerUrl) return providerCard;
 
   const observedAt = Array.from(currentPricesByPrinting.values())
     .map((price) => price.observedAt)
@@ -135,7 +150,7 @@ async function mapCardWithCurrentPrices(row: typeof cards.$inferSelect) {
   return {
     ...providerCard,
     tcgplayer: {
-      url: providerCard.tcgplayer?.url ?? "",
+      url: tcgplayerUrl,
       updatedAt: observedAt ? observedAt.toISOString().slice(0, 10) : providerCard.tcgplayer?.updatedAt ?? "",
       prices: Object.fromEntries(
         Array.from(currentPricesByPrinting, ([printing, price]) => [
@@ -145,6 +160,23 @@ async function mapCardWithCurrentPrices(row: typeof cards.$inferSelect) {
       ),
     },
   };
+}
+
+async function getTcgplayerProductIdForCardId(cardId: string) {
+  const [row] = await db
+    .select({ productId: cardVariantExternalRefs.refValue })
+    .from(cardVariantExternalRefs)
+    .innerJoin(cardVariants, eq(cardVariantExternalRefs.cardVariantId, cardVariants.id))
+    .where(
+      and(
+        eq(cardVariants.cardId, cardId),
+        eq(cardVariantExternalRefs.source, "tcgplayer"),
+        eq(cardVariantExternalRefs.refType, "product_id"),
+      ),
+    )
+    .limit(1);
+
+  return row?.productId ?? null;
 }
 
 function normalizedCardNameSql() {
