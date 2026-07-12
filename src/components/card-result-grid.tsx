@@ -53,7 +53,7 @@ export function CardResultGrid({
                     className="object-cover transition duration-300 group-hover:scale-[1.03]"
                   />
                 </div>
-                <div className="min-w-0 self-center">
+                <div className="min-w-0 self-center pr-8">
                   <p className="text-xs font-semibold uppercase tracking-[0.12em] text-[var(--accent)]">
                     {card.rarity ?? "Pokemon card"}
                   </p>
