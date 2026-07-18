@@ -7,6 +7,7 @@ export type CollectionItemDto = {
   providerSetId: string;
   setName: string;
   imageSmallUrl: string | null;
+  imageLargeUrl: string | null;
   printing: string;
   condition: string;
   quantity: number;

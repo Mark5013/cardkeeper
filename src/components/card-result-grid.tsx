@@ -15,9 +15,11 @@ const usd = new Intl.NumberFormat("en-US", {
 export function CardResultGrid({
   cards,
   onCardNavigate,
+  unoptimizedCardImages = false,
 }: {
   cards: CardSearchResult[];
   onCardNavigate?: () => void;
+  unoptimizedCardImages?: boolean;
 }) {
   const [quickAddCard, setQuickAddCard] = useState<CardSearchResult | null>(null);
 
@@ -50,6 +52,7 @@ export function CardResultGrid({
                     alt={`${card.name} card`}
                     fill
                     sizes="112px"
+                    unoptimized={unoptimizedCardImages}
                     className="object-cover transition duration-300 group-hover:scale-[1.03]"
                   />
                 </div>

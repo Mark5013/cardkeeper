@@ -252,6 +252,7 @@ export async function getCurrentCollection(
       providerSetId: set.providerId,
       setName: set.name,
       imageSmallUrl: card.imageSmallUrl,
+      imageLargeUrl: card.imageLargeUrl,
       printing: variant.printing,
       condition: variant.condition,
       quantity: item.quantity,

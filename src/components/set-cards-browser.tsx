@@ -147,7 +147,7 @@ export function SetCardsBrowser({
         />
       </div>
 
-      <CardResultGrid cards={cards} />
+      <CardResultGrid cards={cards} unoptimizedCardImages />
       {hasMoreCards ? <div ref={sentinelRef} className="h-12" aria-hidden="true" /> : null}
       {isLoading ? (
         <div className="mt-6 flex items-center justify-center gap-3 text-sm font-semibold text-[var(--muted)]" aria-live="polite">
