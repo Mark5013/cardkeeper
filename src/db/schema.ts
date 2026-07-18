@@ -8,6 +8,7 @@ import {
   integer,
   jsonb,
   pgTable,
+  primaryKey,
   text,
   timestamp,
   uniqueIndex,
@@ -217,6 +218,34 @@ export const pricePoints = pgTable(
     ),
     index("price_points_variant_date_idx").on(table.cardVariantId, table.observedAt),
     check("price_points_amount_nonnegative", sql`${table.amountMinor} >= 0`),
+  ],
+);
+
+export const priceSeries = pgTable(
+  "price_series",
+  {
+    cardVariantId: uuid("card_variant_id")
+      .notNull()
+      .references(() => cardVariants.id, { onDelete: "cascade" }),
+    source: text("source").notNull(),
+    priceType: text("price_type").default("market").notNull(),
+    currency: varchar("currency", { length: 3 }).notNull(),
+    observedOn: date("observed_on").array().default(sql`'{}'::date[]`).notNull(),
+    amountsMinor: integer("amounts_minor").array().default(sql`'{}'::integer[]`).notNull(),
+    ...timestamps,
+  },
+  (table) => [
+    primaryKey({
+      name: "price_series_pkey",
+      columns: [table.cardVariantId, table.source, table.priceType, table.currency],
+    }),
+    check("price_series_source_format_check", sql`${table.source} ~ '^[a-z0-9_]{1,60}$'`),
+    check("price_series_price_type_format_check", sql`${table.priceType} ~ '^[a-z0-9_]{1,60}$'`),
+    check(
+      "price_series_cardinality_check",
+      sql`cardinality(${table.observedOn}) = cardinality(${table.amountsMinor})`,
+    ),
+    check("price_series_amounts_nonnegative", sql`0 <= all(${table.amountsMinor})`),
   ],
 );
 

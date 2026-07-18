@@ -1,6 +1,8 @@
 import nextEnv from "@next/env";
 import postgres from "postgres";
 
+import { compareTcgcsvGroupsByPublishedOn } from "./lib/tcgcsv-history-core.mjs";
+
 const { loadEnvConfig } = nextEnv;
 
 const TCGCSV_BASE_URL = "https://tcgcsv.com";
@@ -221,7 +223,7 @@ async function refreshPrices() {
     productsMatched: 0,
     priceRowsPrepared: 0,
     currentPricesUpserted: 0,
-    pricePointsInserted: 0,
+    priceSeriesChangesAppended: 0,
   };
 
   console.log(
@@ -230,7 +232,7 @@ async function refreshPrices() {
 
   if (options.resetSource) {
     if (options.dryRun) {
-      console.log(`Dry run: would remove existing ${SOURCE} rows from current_prices and price_points.`);
+      console.log(`Dry run: would remove existing ${SOURCE} rows from current_prices and price_series.`);
     } else {
       await resetSourceRows();
     }
@@ -278,7 +280,7 @@ async function refreshPrices() {
     if (!options.dryRun && groupPriceRecords.length > 0) {
       const writeStats = await writePrices(groupPriceRecords);
       stats.currentPricesUpserted += writeStats.currentPricesUpserted;
-      stats.pricePointsInserted += writeStats.pricePointsInserted;
+      stats.priceSeriesChangesAppended += writeStats.priceSeriesChangesAppended;
     }
 
     console.log(
@@ -292,7 +294,7 @@ async function refreshPrices() {
 
   const elapsedSeconds = ((Date.now() - startedAt) / 1000).toFixed(1);
   console.log(
-    `TCGCSV price refresh complete in ${elapsedSeconds}s. ${stats.groupsMatched}/${stats.groupsChecked} groups matched, ${stats.productsMatched}/${stats.productsChecked} products matched, ${stats.priceRowsPrepared.toLocaleString()} observations prepared, ${stats.currentPricesUpserted.toLocaleString()} current prices upserted, ${stats.pricePointsInserted.toLocaleString()} price points inserted.`,
+    `TCGCSV price refresh complete in ${elapsedSeconds}s. ${stats.groupsMatched}/${stats.groupsChecked} groups matched, ${stats.productsMatched}/${stats.productsChecked} products matched, ${stats.priceRowsPrepared.toLocaleString()} observations prepared, ${stats.currentPricesUpserted.toLocaleString()} current prices upserted, ${stats.priceSeriesChangesAppended.toLocaleString()} compressed history changes appended.`,
   );
 }
 
@@ -565,14 +567,14 @@ async function resetSourceRows() {
     where source = ${SOURCE}
     returning id
   `;
-  const deletedPricePoints = await sql`
-    delete from price_points
+  const deletedPriceSeries = await sql`
+    delete from price_series
     where source = ${SOURCE}
-    returning id
+    returning card_variant_id
   `;
 
   console.log(
-    `Removed ${deletedCurrentPrices.length.toLocaleString()} current price rows and ${deletedPricePoints.length.toLocaleString()} price point rows for source ${SOURCE}.`,
+    `Removed ${deletedCurrentPrices.length.toLocaleString()} current price rows and ${deletedPriceSeries.length.toLocaleString()} compressed price series for source ${SOURCE}.`,
   );
 }
 
@@ -608,7 +610,7 @@ async function getGroupsToRefresh() {
 
   groups = groups
     .filter((group) => group.categoryId === POKEMON_CATEGORY_ID)
-    .sort((left, right) => Date.parse(right.publishedOn ?? "") - Date.parse(left.publishedOn ?? ""));
+    .sort(compareTcgcsvGroupsByPublishedOn);
 
   if (options.maxGroups !== null) {
     groups = groups.slice(0, options.maxGroups);
@@ -708,9 +710,10 @@ async function getVariantIdsByCardPrinting(priceInputs, dryRun) {
 
 async function writePrices(priceRecords) {
   let currentPricesUpserted = 0;
-  let pricePointsInserted = 0;
+  let priceSeriesChangesAppended = 0;
 
   for (const batch of chunk(dedupePriceRecords(priceRecords), WRITE_BATCH_SIZE)) {
+    const changedSeriesRows = await filterChangedCurrentPriceRows(batch);
     const currentRows = await sql`
       insert into current_prices ${sql(
         batch,
@@ -727,28 +730,14 @@ async function writePrices(priceRecords) {
         updated_at = now()
       returning id
     `;
-    const changedPointRows = await filterChangedPricePointRows(batch);
-    const pointRows = changedPointRows.length
-      ? await sql`
-      insert into price_points ${sql(
-        changedPointRows,
-        "card_variant_id",
-        "source",
-        "price_type",
-        "currency",
-        "amount_minor",
-        "observed_at",
-      )}
-      on conflict (card_variant_id, source, price_type, currency, observed_at) do nothing
-      returning id
-    `
-      : [];
+
+    if (changedSeriesRows.length > 0) await appendPriceSeriesChanges(changedSeriesRows);
 
     currentPricesUpserted += currentRows.length;
-    pricePointsInserted += pointRows.length;
+    priceSeriesChangesAppended += changedSeriesRows.length;
   }
 
-  return { currentPricesUpserted, pricePointsInserted };
+  return { currentPricesUpserted, priceSeriesChangesAppended };
 }
 
 async function writeTcgplayerProductRefs(priceInputs, variantIdsByCardPrinting) {
@@ -785,7 +774,7 @@ async function writeTcgplayerProductRefs(priceInputs, variantIdsByCardPrinting) 
   }
 }
 
-async function filterChangedPricePointRows(rows) {
+async function filterChangedCurrentPriceRows(rows) {
   const uniqueVariantIds = Array.from(new Set(rows.map((row) => row.card_variant_id)));
   const uniqueSources = Array.from(new Set(rows.map((row) => row.source)));
   const uniquePriceTypes = Array.from(new Set(rows.map((row) => row.price_type)));
@@ -808,12 +797,11 @@ async function filterChangedPricePointRows(rows) {
       price_type,
       currency,
       amount_minor
-    from price_points
+    from current_prices
     where card_variant_id in ${sql(uniqueVariantIds)}
       and source in ${sql(uniqueSources)}
       and price_type in ${sql(uniquePriceTypes)}
       and currency in ${sql(uniqueCurrencies)}
-    order by card_variant_id, source, price_type, currency, observed_at desc
   `;
 
   for (const row of latestRows) {
@@ -821,6 +809,49 @@ async function filterChangedPricePointRows(rows) {
   }
 
   return rows.filter((row) => latestAmountsByKey.get(getPriceIdentityKey(row)) !== row.amount_minor);
+}
+
+async function appendPriceSeriesChanges(rows) {
+  const seriesRows = rows.map((row) => ({
+    card_variant_id: row.card_variant_id,
+    source: row.source,
+    price_type: row.price_type,
+    currency: row.currency,
+    observed_on: [row.observed_at.toISOString().slice(0, 10)],
+    amounts_minor: [row.amount_minor],
+    updated_at: new Date(),
+  }));
+
+  await sql`
+    insert into price_series ${sql(
+      seriesRows,
+      "card_variant_id",
+      "source",
+      "price_type",
+      "currency",
+      "observed_on",
+      "amounts_minor",
+      "updated_at",
+    )}
+    on conflict (card_variant_id, source, price_type, currency) do update set
+      observed_on = case
+        when cardinality(price_series.observed_on) = 0
+          then excluded.observed_on
+        when price_series.observed_on[cardinality(price_series.observed_on)] < excluded.observed_on[1]
+          then price_series.observed_on || excluded.observed_on
+        else price_series.observed_on
+      end,
+      amounts_minor = case
+        when cardinality(price_series.observed_on) = 0
+          then excluded.amounts_minor
+        when price_series.observed_on[cardinality(price_series.observed_on)] < excluded.observed_on[1]
+          then price_series.amounts_minor || excluded.amounts_minor
+        when price_series.observed_on[cardinality(price_series.observed_on)] = excluded.observed_on[1]
+          then trim_array(price_series.amounts_minor, 1) || excluded.amounts_minor
+        else price_series.amounts_minor
+      end,
+      updated_at = excluded.updated_at
+  `;
 }
 
 function getPriceIdentityKey(row) {

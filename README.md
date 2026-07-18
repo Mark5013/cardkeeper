@@ -78,7 +78,7 @@ Import or refresh the local English Pokemon TCG catalog:
 npm run catalog:import
 ```
 
-Refresh TCGCSV-backed TCGplayer prices into `current_prices` and `price_points`:
+Refresh TCGCSV-backed TCGplayer prices into `current_prices` and compressed `price_series` history:
 
 ```bash
 npm run prices:refresh
@@ -89,6 +89,37 @@ The scheduled GitHub Action runs nightly with:
 ```bash
 npm run prices:refresh -- --skip-if-current
 ```
+
+Backfill TCGCSV's daily archives oldest-first into compressed `price_series` rows:
+
+```bash
+npm run prices:backfill -- --from=2024-02-08 --to=2026-07-17
+```
+
+Run a small read-only probe before a full backfill:
+
+```bash
+npm run prices:backfill -- --from=2024-02-08 --to=2024-02-14 --dry-run
+```
+
+The backfill requires `bsdtar` or 7-Zip. Set `TCGCSV_ARCHIVE_EXTRACTOR` when the extractor is not available as `tar`. It uses the existing TCGplayer product/printing references and the same published-date group ordering as the nightly refresh. Archives are requested sequentially with a custom User-Agent, at least 100ms between requests, and a hard preflight check that keeps the worst-case run below 10,000 requests. A local SQLite stage checkpoints each completed date so an interrupted run can resume. Only market prices that changed from the preceding processed day are stored; the backfill never changes `current_prices`.
+
+For a large import, stage and verify before uploading:
+
+```bash
+npm run prices:backfill -- --from=2024-02-08 --to=2026-07-17 --stage-only --verify-legacy
+npm run prices:backfill -- --from=2024-02-08 --to=2026-07-17 --verify-upload
+```
+
+Use the same `--temp-dir` or `--stage-path` on both commands when overriding the default staging location. `--verify-legacy` compares carried-forward values with any preserved row history and the latest values with `current_prices`. `--verify-upload` checks database row/point counts, aligned arrays, strictly increasing dates, coverage, and latest values without rewriting the uploaded series.
+
+For a staged deployment where the currently deployed app still reads `price_points`, restore a short compatibility window after the compressed upload:
+
+```bash
+npm run prices:backfill -- --from=2024-02-08 --to=2026-07-17 --verify-upload --restore-legacy-from=2026-07-10
+```
+
+After the `price_series` reader is deployed, remove the redundant compatibility rows with `--verify-upload --remove-legacy`. Both operations require upload verification in the same command, and cleanup refuses to truncate a mixed-source `price_points` table.
 
 Configure `DATABASE_URL` as a GitHub Actions secret before relying on the workflow.
 
@@ -129,6 +160,7 @@ npm run db:test-rls
 - `card_variants` separates finish, condition, and language.
 - `collection_items` stores a user's quantity for a specific variant.
 - `current_prices` stores the latest value by source and price type.
-- `price_points` stores historical observations for graphs.
+- `price_series` stores changed historical observations as aligned date and integer-amount arrays, one row per variant/source/type/currency series.
+- `price_points` remains as a legacy-compatible table; TCGCSV history is read from `price_series`.
 
 All monetary amounts are stored in minor currency units, such as cents.

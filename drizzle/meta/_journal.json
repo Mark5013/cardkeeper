@@ -71,6 +71,13 @@
       "when": 1783632000000,
       "tag": "0009_card_variant_external_refs",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1784343932470,
+      "tag": "0010_price_series",
+      "breakpoints": true
     }
   ]
 }

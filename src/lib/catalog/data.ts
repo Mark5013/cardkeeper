@@ -11,6 +11,7 @@ import {
   cardVariants,
   currentPrices,
   pricePoints,
+  priceSeries,
 } from "@/db/schema";
 import {
   getPokemonCard,
@@ -716,80 +717,110 @@ export const getCatalogPokemonCard = cache(async (id: string) => {
 
 export const getCatalogPokemonCardPriceHistory = cache(async (id: string) => {
   try {
-    const rows = await db
-      .select({
-        printing: cardVariants.printing,
-        condition: cardVariants.condition,
-        amountMinor: pricePoints.amountMinor,
-        observedAt: pricePoints.observedAt,
-      })
-      .from(pricePoints)
-      .innerJoin(cardVariants, eq(pricePoints.cardVariantId, cardVariants.id))
-      .innerJoin(cards, eq(cardVariants.cardId, cards.id))
-      .where(
-        and(
-          eq(cards.providerId, id),
-          eq(cards.languageCode, "en"),
-          eq(cardVariants.languageCode, "en"),
-          eq(cardVariants.condition, "unspecified"),
-          eq(pricePoints.source, "tcgcsv"),
-          eq(pricePoints.priceType, "market"),
-          eq(pricePoints.currency, "USD"),
+    const baseFilters = [
+      eq(cards.providerId, id),
+      eq(cards.languageCode, "en"),
+      eq(cardVariants.languageCode, "en"),
+      eq(cardVariants.condition, "unspecified"),
+    ];
+    const [compressedRows, legacyRows, currentRows] = await Promise.all([
+      db
+        .select({
+          printing: cardVariants.printing,
+          condition: cardVariants.condition,
+          observedOn: priceSeries.observedOn,
+          amountsMinor: priceSeries.amountsMinor,
+        })
+        .from(priceSeries)
+        .innerJoin(cardVariants, eq(priceSeries.cardVariantId, cardVariants.id))
+        .innerJoin(cards, eq(cardVariants.cardId, cards.id))
+        .where(
+          and(
+            ...baseFilters,
+            eq(priceSeries.source, "tcgcsv"),
+            eq(priceSeries.priceType, "market"),
+            eq(priceSeries.currency, "USD"),
+          ),
         ),
-      )
-      .orderBy(asc(cardVariants.printing), asc(cardVariants.condition), asc(pricePoints.observedAt));
-    const currentRows = await db
-      .select({
-        printing: cardVariants.printing,
-        condition: cardVariants.condition,
-        amountMinor: currentPrices.amountMinor,
-        observedAt: currentPrices.observedAt,
-      })
-      .from(currentPrices)
-      .innerJoin(cardVariants, eq(currentPrices.cardVariantId, cardVariants.id))
-      .innerJoin(cards, eq(cardVariants.cardId, cards.id))
-      .where(
-        and(
-          eq(cards.providerId, id),
-          eq(cards.languageCode, "en"),
-          eq(cardVariants.languageCode, "en"),
-          eq(cardVariants.condition, "unspecified"),
-          eq(currentPrices.source, "tcgcsv"),
-          eq(currentPrices.priceType, "market"),
-          eq(currentPrices.currency, "USD"),
+      db
+        .select({
+          printing: cardVariants.printing,
+          condition: cardVariants.condition,
+          amountMinor: pricePoints.amountMinor,
+          observedAt: pricePoints.observedAt,
+        })
+        .from(pricePoints)
+        .innerJoin(cardVariants, eq(pricePoints.cardVariantId, cardVariants.id))
+        .innerJoin(cards, eq(cardVariants.cardId, cards.id))
+        .where(
+          and(
+            ...baseFilters,
+            eq(pricePoints.source, "tcgcsv"),
+            eq(pricePoints.priceType, "market"),
+            eq(pricePoints.currency, "USD"),
+          ),
+        )
+        .orderBy(asc(pricePoints.observedAt)),
+      db
+        .select({
+          printing: cardVariants.printing,
+          condition: cardVariants.condition,
+          amountMinor: currentPrices.amountMinor,
+          observedAt: currentPrices.observedAt,
+        })
+        .from(currentPrices)
+        .innerJoin(cardVariants, eq(currentPrices.cardVariantId, cardVariants.id))
+        .innerJoin(cards, eq(cardVariants.cardId, cards.id))
+        .where(
+          and(
+            ...baseFilters,
+            eq(currentPrices.source, "tcgcsv"),
+            eq(currentPrices.priceType, "market"),
+            eq(currentPrices.currency, "USD"),
+          ),
         ),
-      );
+    ]);
 
-    const seriesByVariant = new Map<string, CardPriceHistoryPoint[]>();
-
-    for (const row of rows) {
-      const key = `${row.printing}:${row.condition}`;
-      const points = seriesByVariant.get(key) ?? [];
-      points.push({
-        observedAt: row.observedAt.toISOString(),
-        amountUsd: row.amountMinor / 100,
+    const seriesByVariantAndDay = new Map<string, Map<string, CardPriceHistoryPoint>>();
+    const toObservedAt = (value: string | Date) => {
+      if (value instanceof Date) return value.toISOString();
+      return `${value.slice(0, 10)}T00:00:00.000Z`;
+    };
+    const setPoint = (key: string, observedAt: string, amountMinor: number) => {
+      const pointsByDay = seriesByVariantAndDay.get(key) ?? new Map<string, CardPriceHistoryPoint>();
+      pointsByDay.set(observedAt.slice(0, 10), {
+        observedAt,
+        amountUsd: amountMinor / 100,
       });
-      seriesByVariant.set(key, points);
+      seriesByVariantAndDay.set(key, pointsByDay);
+    };
+
+    for (const row of legacyRows) {
+      setPoint(`${row.printing}:${row.condition}`, row.observedAt.toISOString(), row.amountMinor);
     }
 
-    for (const row of currentRows) {
+    for (const row of compressedRows) {
       const key = `${row.printing}:${row.condition}`;
-      const points = seriesByVariant.get(key) ?? [];
-      const latestPoint = points.at(-1);
-      const latestPointTime = latestPoint ? new Date(latestPoint.observedAt).getTime() : 0;
-      const currentObservedAt = row.observedAt.toISOString();
+      const pointCount = Math.min(row.observedOn.length, row.amountsMinor.length);
 
-      if (!latestPoint || row.observedAt.getTime() > latestPointTime) {
-        points.push({
-          observedAt: currentObservedAt,
-          amountUsd: row.amountMinor / 100,
-        });
-        seriesByVariant.set(key, points);
+      for (let index = 0; index < pointCount; index += 1) {
+        setPoint(
+          key,
+          toObservedAt(row.observedOn[index] as string | Date),
+          row.amountsMinor[index],
+        );
       }
     }
 
-    return Array.from(seriesByVariant, ([key, points]) => {
+    for (const row of currentRows) {
+      setPoint(`${row.printing}:${row.condition}`, row.observedAt.toISOString(), row.amountMinor);
+    }
+
+    return Array.from(seriesByVariantAndDay, ([key, pointsByDay]) => {
       const [printing, condition] = key.split(":");
+      const points = Array.from(pointsByDay.values()).sort(
+        (first, second) => new Date(first.observedAt).getTime() - new Date(second.observedAt).getTime(),
+      );
 
       return {
         printing,
