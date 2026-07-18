@@ -157,34 +157,6 @@ export function PriceHistoryChart({ series }: { series: PriceHistorySeries[] }) 
   return (
     <div className="mt-4 grid gap-4 2xl:grid-cols-[minmax(0,1fr)_14rem]">
       <div className="rounded-lg border border-[var(--line)] bg-[var(--surface)] p-4">
-        <div className="mb-3 overflow-x-auto pb-1">
-          <div
-            aria-label="Price history range"
-            className="inline-flex min-w-max gap-1 rounded-lg border border-[var(--line)] bg-[var(--background)] p-1"
-            role="group"
-          >
-            {PRICE_HISTORY_RANGES.map((range) => {
-              const isSelected = range.value === selectedRange;
-
-              return (
-                <button
-                  aria-pressed={isSelected}
-                  className={`cursor-pointer rounded-md px-3 py-1.5 text-xs font-bold transition-colors ${
-                    isSelected
-                      ? "bg-[var(--secondary)] text-[var(--background)]"
-                      : "text-[var(--muted)] hover:bg-[var(--surface)] hover:text-[var(--ink)]"
-                  }`}
-                  key={range.value}
-                  onClick={() => setSelectedRange(range.value)}
-                  type="button"
-                >
-                  {range.shortLabel}
-                </button>
-              );
-            })}
-          </div>
-        </div>
-
         <div className="h-72 w-full">
           <ResponsiveContainer width="100%" height="100%">
             <LineChart data={points} margin={{ top: 12, right: 16, bottom: 12, left: 4 }}>
@@ -224,6 +196,34 @@ export function PriceHistoryChart({ series }: { series: PriceHistorySeries[] }) 
               />
             </LineChart>
           </ResponsiveContainer>
+        </div>
+
+        <div className="mt-3 overflow-x-auto pb-1">
+          <div
+            aria-label="Price history range"
+            className="mx-auto flex w-max gap-1 rounded-lg border border-[var(--line)] bg-[var(--background)] p-1"
+            role="group"
+          >
+            {PRICE_HISTORY_RANGES.map((range) => {
+              const isSelected = range.value === selectedRange;
+
+              return (
+                <button
+                  aria-pressed={isSelected}
+                  className={`cursor-pointer rounded-md px-3 py-1.5 text-xs font-bold transition-colors ${
+                    isSelected
+                      ? "bg-[var(--secondary)] text-[var(--background)]"
+                      : "text-[var(--muted)] hover:bg-[var(--surface)] hover:text-[var(--ink)]"
+                  }`}
+                  key={range.value}
+                  onClick={() => setSelectedRange(range.value)}
+                  type="button"
+                >
+                  {range.shortLabel}
+                </button>
+              );
+            })}
+          </div>
         </div>
       </div>
 
