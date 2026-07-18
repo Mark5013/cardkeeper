@@ -11,10 +11,11 @@ import {
   YAxis,
 } from "recharts";
 
-type PriceHistoryPoint = {
-  observedAt: string;
-  amountUsd: number;
-};
+import {
+  expandDailyPricePoints,
+  type DailyPriceHistoryPoint,
+  type PriceHistoryPoint,
+} from "@/lib/catalog/price-history";
 
 type PriceHistorySeries = {
   printing: string;
@@ -23,15 +24,16 @@ type PriceHistorySeries = {
   points: PriceHistoryPoint[];
 };
 
-type ChartPoint = PriceHistoryPoint & {
+type ChartPoint = DailyPriceHistoryPoint & {
   dateLabel: string;
   priceLabel: string;
 };
 
 type PriceHistorySummaryProps = {
   latestPoint: ChartPoint;
+  recordedPointCount: number;
   selectedSeries: PriceHistorySeries;
-  snapshotCount: number;
+  chartDayCount: number;
 };
 
 const usd = new Intl.NumberFormat("en-US", {
@@ -49,9 +51,10 @@ const dateFormatter = new Intl.DateTimeFormat("en-US", {
   month: "short",
   day: "numeric",
   year: "numeric",
+  timeZone: "UTC",
 });
 
-function formatDate(value: string) {
+function formatDate(value: string | number) {
   return dateFormatter.format(new Date(value));
 }
 
@@ -70,14 +73,18 @@ function PriceTooltip({
     <div className="rounded-lg border border-[var(--line)] bg-[var(--surface)] px-3 py-2 text-sm shadow-[0_14px_32px_rgb(0_0_0_/_32%)]">
       <p className="font-bold text-[var(--ink)]">{point.priceLabel}</p>
       <p className="mt-1 text-xs text-[var(--muted)]">{point.dateLabel}</p>
+      <p className="mt-1 text-xs text-[var(--muted)]">
+        {point.isRecorded ? "Recorded market value" : "Carried forward from the previous change"}
+      </p>
     </div>
   );
 }
 
 function PriceHistorySummary({
   latestPoint,
+  recordedPointCount,
   selectedSeries,
-  snapshotCount,
+  chartDayCount,
 }: PriceHistorySummaryProps) {
   return (
     <aside className="rounded-lg border border-[var(--line)] bg-[var(--surface)] p-3">
@@ -91,10 +98,9 @@ function PriceHistorySummary({
         <p className="truncate font-semibold text-[var(--ink)]" title={selectedSeries.label}>
           {selectedSeries.label}
         </p>
+        <p className="mt-1">{chartDayCount.toLocaleString()} chart {chartDayCount === 1 ? "day" : "days"}</p>
         <p className="mt-1">
-          {snapshotCount === 1
-            ? "1 market price point"
-            : `${snapshotCount.toLocaleString()} market price points`}
+          {recordedPointCount.toLocaleString()} recorded price {recordedPointCount === 1 ? "value" : "values"}
         </p>
       </div>
     </aside>
@@ -104,13 +110,11 @@ function PriceHistorySummary({
 export function PriceHistoryChart({ series }: { series: PriceHistorySeries[] }) {
   const selectedSeries = getPreferredSeries(series);
   const points = useMemo<ChartPoint[]>(() => {
-    return [...(selectedSeries?.points ?? [])]
-      .sort((first, second) => new Date(first.observedAt).getTime() - new Date(second.observedAt).getTime())
-      .map((point) => ({
-        ...point,
-        dateLabel: formatDate(point.observedAt),
-        priceLabel: usd.format(point.amountUsd),
-      }));
+    return expandDailyPricePoints(selectedSeries?.points ?? []).map((point) => ({
+      ...point,
+      dateLabel: formatDate(point.timestamp),
+      priceLabel: usd.format(point.amountUsd),
+    }));
   }, [selectedSeries]);
 
   if (!selectedSeries || points.length === 0) {
@@ -134,9 +138,13 @@ export function PriceHistoryChart({ series }: { series: PriceHistorySeries[] }) 
             <LineChart data={points} margin={{ top: 12, right: 16, bottom: 12, left: 4 }}>
               <CartesianGrid stroke="var(--line)" strokeDasharray="4 4" vertical={false} />
               <XAxis
-                dataKey="dateLabel"
+                dataKey="timestamp"
+                domain={["dataMin", "dataMax"]}
+                scale="time"
                 tick={{ fill: "var(--muted)", fontSize: 12 }}
+                tickFormatter={(value) => formatDate(Number(value))}
                 tickLine={false}
+                type="number"
                 axisLine={{ stroke: "var(--line)" }}
                 minTickGap={24}
               />
@@ -169,8 +177,9 @@ export function PriceHistoryChart({ series }: { series: PriceHistorySeries[] }) 
 
       <PriceHistorySummary
         latestPoint={latestPoint}
+        recordedPointCount={selectedSeries.points.length}
         selectedSeries={selectedSeries}
-        snapshotCount={points.length}
+        chartDayCount={points.length}
       />
     </div>
   );
