@@ -370,6 +370,7 @@ export function CollectionBrowser({
           headers: {
             Accept: "application/json",
             "Content-Type": "application/json",
+            "X-Cardkeeper-Request": "same-origin",
           },
           body: JSON.stringify({ quantity: nextQuantity }),
         });
@@ -397,7 +398,10 @@ export function CollectionBrowser({
       } else {
         const response = await fetch(`/api/collection/${encodeURIComponent(item.cardVariantId)}`, {
           method: "DELETE",
-          headers: { Accept: "application/json" },
+          headers: {
+            Accept: "application/json",
+            "X-Cardkeeper-Request": "same-origin",
+          },
         });
 
         if (!response.ok) {
