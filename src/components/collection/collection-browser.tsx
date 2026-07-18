@@ -489,6 +489,7 @@ export function CollectionBrowser({
                   <DropdownMenu.Portal>
                     <DropdownMenu.Content className="control-menu" align="end" sideOffset={6}>
                       <DropdownMenu.RadioGroup
+                        className="control-menu-options"
                         value={sort}
                         onValueChange={(value) => setSort(value as CollectionSortOption)}
                       >
