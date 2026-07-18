@@ -20,12 +20,15 @@ export function ImageWithFallback({
   const safeSrc = src?.trim() || fallbackSrc;
   const [failedSrc, setFailedSrc] = useState<string | null>(null);
   const imageSrc = failedSrc === safeSrc ? fallbackSrc : safeSrc;
+  const shouldBypassOptimization =
+    props.unoptimized ?? imageSrc.startsWith("https://tcgplayer-cdn.tcgplayer.com/product/");
 
   return (
     <Image
       {...props}
       alt={alt}
       src={imageSrc}
+      unoptimized={shouldBypassOptimization}
       onError={(event) => {
         onError?.(event);
         if (imageSrc !== fallbackSrc) setFailedSrc(safeSrc);

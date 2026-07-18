@@ -67,7 +67,8 @@ const SET_NAME_ALIASES = new Map(
     ],
     ["Battle Academy 2024", ["Scarlet & Violet Promos"]],
     ["Best of Promos", ["Best of Game"]],
-    ["Deck Exclusives", ["Base"]],
+    ["Base Set", ["Base Set (Unlimited)"]],
+    ["Deck Exclusives", ["Base Set (Shadowless)", "Base Set (Unlimited)"]],
     [
       "League & Championship Cards",
       [
@@ -126,7 +127,8 @@ const GROUP_SET_CARD_NUMBER_ALLOWLIST = new Map(
       "Scarlet & Violet Promos",
       ["105", "106", "107", "108", "109", "110", "111", "112", "113", "114", "148"],
     ],
-    ["Deck Exclusives", "Base", ["8"]],
+    ["Deck Exclusives", "Base Set (Shadowless)", ["8"]],
+    ["Deck Exclusives", "Base Set (Unlimited)", ["8"]],
   ].map(([groupName, setName, cardNumbers]) => [
     getGroupSetKey(groupName, setName),
     new Set(cardNumbers.map((cardNumber) => normalizeCardNumber(cardNumber))),
@@ -444,8 +446,14 @@ function shouldSkipProductForSet(product, group, localSet) {
     return productName.includes("tropical wind") && productName.includes("staff");
   }
 
-  if (groupName === normalizeSetName("Deck Exclusives") && localSetName === normalizeSetName("Base")) {
-    return productName.includes("machamp") && productName.includes("shadowless");
+  if (groupName === normalizeSetName("Deck Exclusives") && cardNumber === "8") {
+    if (localSetName === normalizeSetName("Base Set (Shadowless)")) {
+      return product.productId !== 107004;
+    }
+
+    if (localSetName === normalizeSetName("Base Set (Unlimited)")) {
+      return product.productId !== 42425;
+    }
   }
 
   return false;

@@ -124,7 +124,20 @@ function mapCardSearchResult(input: {
 function mapCard(row: typeof cards.$inferSelect): PokemonTcgCard | null {
   const providerCard = row.providerData as unknown as PokemonTcgCard | null;
 
-  return providerCard?.id ? providerCard : null;
+  if (!providerCard?.id) return null;
+
+  return {
+    ...providerCard,
+    id: row.providerId,
+    name: row.name,
+    number: row.number,
+    rarity: row.rarity ?? providerCard.rarity,
+    artist: row.artist ?? providerCard.artist,
+    images: {
+      small: row.imageSmallUrl ?? providerCard.images.small,
+      large: row.imageLargeUrl ?? providerCard.images.large,
+    },
+  };
 }
 
 async function mapCardWithCurrentPrices(row: typeof cards.$inferSelect) {
@@ -137,10 +150,9 @@ async function mapCardWithCurrentPrices(row: typeof cards.$inferSelect) {
     getTcgplayerProductIdForCardId(row.id),
   ]);
   const tcgplayerUrl =
-    providerCard.tcgplayer?.url ||
     (tcgplayerProductId
       ? `https://www.tcgplayer.com/product/${encodeURIComponent(tcgplayerProductId)}/-?Language=English`
-      : "");
+      : providerCard.tcgplayer?.url ?? "");
 
   if (currentPricesByPrinting.size === 0 && !tcgplayerUrl) return providerCard;
 
@@ -175,6 +187,7 @@ async function getTcgplayerProductIdForCardId(cardId: string) {
         eq(cardVariantExternalRefs.refType, "product_id"),
       ),
     )
+    .orderBy(asc(cardVariantExternalRefs.refValue))
     .limit(1);
 
   return row?.productId ?? null;

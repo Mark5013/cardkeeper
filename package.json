@@ -13,6 +13,7 @@
     "db:generate": "drizzle-kit generate",
     "db:migrate": "node scripts/migrate.mjs",
     "catalog:import": "node scripts/import-catalog.mjs",
+    "catalog:sync-base-editions": "node scripts/sync-base-set-editions.mjs",
     "catalog:test-search": "node scripts/test-catalog-search.mjs",
     "prices:refresh": "node scripts/refresh-prices-tcgcsv.mjs",
     "prices:backfill": "node scripts/backfill-prices-tcgcsv.mjs",

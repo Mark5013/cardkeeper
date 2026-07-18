@@ -17,6 +17,13 @@ const nextConfig: NextConfig = {
         pathname: "/pokemon/**",
         search: "",
       },
+      {
+        protocol: "https",
+        hostname: "tcgplayer-cdn.tcgplayer.com",
+        port: "",
+        pathname: "/product/**",
+        search: "",
+      },
     ],
   },
 };

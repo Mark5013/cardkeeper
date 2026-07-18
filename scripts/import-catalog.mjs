@@ -1,6 +1,11 @@
 import nextEnv from "@next/env";
 import postgres from "postgres";
 
+import {
+  applyBaseSetCardOverrides,
+  applyBaseSetSetOverrides,
+} from "./lib/base-set-editions.mjs";
+
 const { loadEnvConfig } = nextEnv;
 
 const API_BASE_URL = "https://api.pokemontcg.io/v2";
@@ -462,7 +467,7 @@ async function upsertSets(sets) {
   if (sets.length === 0) return;
 
   const now = new Date();
-  const rows = sets.map((set) => ({
+  const rows = sets.map(applyBaseSetSetOverrides).map((set) => ({
     provider_id: set.id,
     language_code: "en",
     name: set.name,
@@ -515,7 +520,9 @@ async function upsertSets(sets) {
 async function upsertCards(cards) {
   if (cards.length === 0) return;
 
-  const setProviderIds = Array.from(new Set(cards.map((card) => card.set.id)));
+  const catalogCards = cards.map(applyBaseSetCardOverrides);
+
+  const setProviderIds = Array.from(new Set(catalogCards.map((card) => card.set.id)));
   const localSets = await sql`
     select id, provider_id
     from card_sets
@@ -524,7 +531,7 @@ async function upsertCards(cards) {
   `;
   const localSetIdsByProviderId = new Map(localSets.map((set) => [set.provider_id, set.id]));
   const now = new Date();
-  const rows = cards.map((card) => {
+  const rows = catalogCards.map((card) => {
     const setId = localSetIdsByProviderId.get(card.set.id);
 
     if (!setId) {
