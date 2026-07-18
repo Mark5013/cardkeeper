@@ -45,9 +45,26 @@ Recommended changes:
 **Relevant file:** `src/lib/rate-limit.ts`  
 **Priority:** High
 
-Client identity is selected from `cf-connecting-ip`, then the first `x-forwarded-for` value, then `x-real-ip`. Forwarding headers are trustworthy only when the application is reachable exclusively through a proxy that removes user-supplied versions. Otherwise, clients can rotate a forged header and evade limits.
+**Implementation status (2026-07-17): Complete**
 
-The local fallback also prunes only expired entries after the map has exceeded its target size. If many buckets remain active, pruning does not reduce the map and it can continue growing. This is especially relevant during Redis outages, when the fallback is most likely to receive heavy traffic.
+- Client identity now follows an explicit `none` or `vercel` trusted-proxy policy. Vercel deployments are auto-detected from `VERCEL=1`; outside Vercel, forwarding headers are ignored unless the policy is explicitly configured. Invalid policy values fail closed to `none`.
+- Under the Vercel policy, only the platform-owned `x-vercel-forwarded-for` value is accepted, and it must be a valid IPv4 or IPv6 address. `cf-connecting-ip`, ordinary `x-forwarded-for`, and `x-real-ip` no longer influence buckets. This follows [Vercel's request-header contract](https://vercel.com/docs/headers/request-headers#x-vercel-forwarded-for), including deployments placed behind another proxy.
+- The local fallback is encapsulated in a store with a hard configurable bound (`RATE_LIMIT_LOCAL_MAX_BUCKETS`, default `5000`), periodic expiry cleanup, and deterministic least-recently-used eviction. The map cannot grow beyond the configured count even when every bucket is still active.
+- Redis REST calls use an abort deadline (`RATE_LIMIT_REDIS_TIMEOUT_MS`, default `1000` ms), validate both HTTP and individual pipeline-command results, and continue to use the documented `INCR`/`PEXPIRE NX`/`PTTL` pipeline.
+- Redis failure now has an explicit fail-degraded policy: log the store error and enforce a per-runtime local allowance at 50% of the route's normal limit. This is stricter than the normal allowance but remains available during a distributed-store outage.
+- Redis keys use an HMAC-SHA-256 client identifier keyed by the Redis REST token, so raw IP addresses are not stored in Redis key names. Rotating the token also rotates the identifier namespace.
+- Successful rate-limited route responses now include `X-RateLimit-Limit`, `X-RateLimit-Remaining`, and `X-RateLimit-Reset`; rejected responses retain those headers plus `Retry-After`.
+- Pure rate-limit logic was moved to `src/lib/rate-limit/core.ts`, with deterministic tests for trusted proxy handling, spoofed headers, malformed IPs, expiry boundaries, concurrent increments, the maximum bucket count and LRU eviction, Redis key hashing, Redis transport/command failure fallback, and successful-response header values.
+
+**Deployment policy:** Production is hosted behind Vercel's managed edge, which overwrites its client-IP headers before the request reaches the function. Keep the function reachable only through that edge. Set `RATE_LIMIT_TRUSTED_PROXY=none` for any environment where requests can reach the application directly; do not change the policy to trust arbitrary `x-forwarded-for` values.
+
+**Configuration:** `.env.example` now documents `RATE_LIMIT_TRUSTED_PROXY`, `RATE_LIMIT_REDIS_TIMEOUT_MS`, and `RATE_LIMIT_LOCAL_MAX_BUCKETS`. Existing Redis URL, token, and key-prefix variables are unchanged.
+
+**Verification (2026-07-17):** `npm run test:unit` (27 tests passed, including 10 focused rate-limit tests), `npm run typecheck` (passed), `npm run lint` (passed), and `git diff --check` (passed).
+
+Before this change, client identity was selected from `cf-connecting-ip`, then the first `x-forwarded-for` value, then `x-real-ip`. Forwarding headers are trustworthy only when the application is reachable exclusively through a proxy that removes user-supplied versions. Otherwise, clients can rotate a forged header and evade limits.
+
+The previous local fallback also pruned only expired entries after the map had exceeded its target size. If many buckets remained active, pruning did not reduce the map and it could continue growing. This was especially relevant during Redis outages, when the fallback is most likely to receive heavy traffic.
 
 Recommended changes:
 

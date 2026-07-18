@@ -3,7 +3,7 @@ import { z } from "zod";
 
 import { isSameOriginRequest } from "@/lib/http/security";
 import { logError, measureOperation } from "@/lib/observability";
-import { rateLimitRequest } from "@/lib/rate-limit";
+import { applyRateLimitHeaders, rateLimitRequest } from "@/lib/rate-limit";
 import { getCurrentUser } from "@/lib/supabase/auth";
 import { createClient } from "@/lib/supabase/server";
 
@@ -24,14 +24,14 @@ export async function PUT(request: Request, context: RouteContext<"/api/collecti
     );
   }
 
-  const limitedResponse = await rateLimitRequest(request, {
+  const rateLimit = await rateLimitRequest(request, {
     keyPrefix: "api:collection-mutation",
     limit: 60,
     windowMs: 60_000,
   });
 
-  if (limitedResponse) {
-    return limitedResponse;
+  if (rateLimit.limitedResponse) {
+    return rateLimit.limitedResponse;
   }
 
   const user = await getCurrentUser();
@@ -98,17 +98,20 @@ export async function PUT(request: Request, context: RouteContext<"/api/collecti
     );
   }
 
-  return NextResponse.json(
-    {
-      item: {
-        id: data.id,
-        cardVariantId: data.card_variant_id,
-        quantity: data.quantity,
-        createdAt: data.created_at,
-        updatedAt: data.updated_at,
+  return applyRateLimitHeaders(
+    NextResponse.json(
+      {
+        item: {
+          id: data.id,
+          cardVariantId: data.card_variant_id,
+          quantity: data.quantity,
+          createdAt: data.created_at,
+          updatedAt: data.updated_at,
+        },
       },
-    },
-    { headers: mutationHeaders() },
+      { headers: mutationHeaders() },
+    ),
+    rateLimit,
   );
 }
 
@@ -120,14 +123,14 @@ export async function DELETE(request: Request, context: RouteContext<"/api/colle
     );
   }
 
-  const limitedResponse = await rateLimitRequest(request, {
+  const rateLimit = await rateLimitRequest(request, {
     keyPrefix: "api:collection-mutation",
     limit: 60,
     windowMs: 60_000,
   });
 
-  if (limitedResponse) {
-    return limitedResponse;
+  if (rateLimit.limitedResponse) {
+    return rateLimit.limitedResponse;
   }
 
   const user = await getCurrentUser();
@@ -167,5 +170,8 @@ export async function DELETE(request: Request, context: RouteContext<"/api/colle
     );
   }
 
-  return new NextResponse(null, { status: 204, headers: mutationHeaders() });
+  return applyRateLimitHeaders(
+    new NextResponse(null, { status: 204, headers: mutationHeaders() }),
+    rateLimit,
+  );
 }

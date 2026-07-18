@@ -7,7 +7,7 @@ import { CARD_CONDITIONS, type CardCondition } from "@/lib/collection/options";
 import { isSameOriginRequest } from "@/lib/http/security";
 import { logError, measureOperation } from "@/lib/observability";
 import { getCardPrintingOptions } from "@/lib/pokemon-tcg/printing";
-import { rateLimitRequest } from "@/lib/rate-limit";
+import { applyRateLimitHeaders, rateLimitRequest } from "@/lib/rate-limit";
 import { getCurrentUser } from "@/lib/supabase/auth";
 import { createClient } from "@/lib/supabase/server";
 
@@ -33,14 +33,14 @@ export async function PUT(request: Request, context: RouteContext<"/api/collecti
     );
   }
 
-  const limitedResponse = await rateLimitRequest(request, {
+  const rateLimit = await rateLimitRequest(request, {
     keyPrefix: "api:collection-mutation",
     limit: 60,
     windowMs: 60_000,
   });
 
-  if (limitedResponse) {
-    return limitedResponse;
+  if (rateLimit.limitedResponse) {
+    return rateLimit.limitedResponse;
   }
 
   const user = await getCurrentUser();
@@ -163,18 +163,21 @@ export async function PUT(request: Request, context: RouteContext<"/api/collecti
     );
   }
 
-  return NextResponse.json(
-    {
-      item: {
-        id: data.id,
-        variantId: data.card_variant_id,
-        printing: parsedBody.data.printing,
-        condition: parsedBody.data.condition,
-        quantity: data.quantity,
-        createdAt: data.created_at,
-        updatedAt: data.updated_at,
+  return applyRateLimitHeaders(
+    NextResponse.json(
+      {
+        item: {
+          id: data.id,
+          variantId: data.card_variant_id,
+          printing: parsedBody.data.printing,
+          condition: parsedBody.data.condition,
+          quantity: data.quantity,
+          createdAt: data.created_at,
+          updatedAt: data.updated_at,
+        },
       },
-    },
-    { headers: privateHeaders },
+      { headers: privateHeaders },
+    ),
+    rateLimit,
   );
 }

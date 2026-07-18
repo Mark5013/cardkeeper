@@ -4,7 +4,7 @@ import { z } from "zod";
 import { getCatalogPokemonCardsBySetPage } from "@/lib/catalog/data";
 import { normalizeSetCardSort } from "@/lib/catalog/set-card-sort";
 import { measureOperation } from "@/lib/observability";
-import { rateLimitRequest } from "@/lib/rate-limit";
+import { applyRateLimitHeaders, rateLimitRequest } from "@/lib/rate-limit";
 
 const setCardsSchema = z.object({
   page: z.coerce.number().int().min(1).max(1000).default(1),
@@ -13,14 +13,14 @@ const setCardsSchema = z.object({
 });
 
 export async function GET(request: Request, context: RouteContext<"/api/sets/[id]/cards">) {
-  const limitedResponse = await rateLimitRequest(request, {
+  const rateLimit = await rateLimitRequest(request, {
     keyPrefix: "api:set-cards",
     limit: 120,
     windowMs: 60_000,
   });
 
-  if (limitedResponse) {
-    return limitedResponse;
+  if (rateLimit.limitedResponse) {
+    return rateLimit.limitedResponse;
   }
 
   const { id } = await context.params;
@@ -35,18 +35,21 @@ export async function GET(request: Request, context: RouteContext<"/api/sets/[id
   }
 
   try {
-    return NextResponse.json(
-      await measureOperation(
-        "api.set_cards",
-        () =>
-          getCatalogPokemonCardsBySetPage({
-            setId: id,
-            page: parsed.data.page,
-            pageSize: parsed.data.pageSize,
-            sort: normalizeSetCardSort(parsed.data.sort),
-          }),
-        { setId: id, page: parsed.data.page, pageSize: parsed.data.pageSize },
+    return applyRateLimitHeaders(
+      NextResponse.json(
+        await measureOperation(
+          "api.set_cards",
+          () =>
+            getCatalogPokemonCardsBySetPage({
+              setId: id,
+              page: parsed.data.page,
+              pageSize: parsed.data.pageSize,
+              sort: normalizeSetCardSort(parsed.data.sort),
+            }),
+          { setId: id, page: parsed.data.page, pageSize: parsed.data.pageSize },
+        ),
       ),
+      rateLimit,
     );
   } catch {
     return NextResponse.json(

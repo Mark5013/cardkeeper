@@ -2,19 +2,19 @@ import { NextResponse } from "next/server";
 
 import { getCurrentSetCollectionProgress } from "@/lib/collection/data";
 import { logError, measureOperation } from "@/lib/observability";
-import { rateLimitRequest } from "@/lib/rate-limit";
+import { applyRateLimitHeaders, rateLimitRequest } from "@/lib/rate-limit";
 
 const privateHeaders = { "Cache-Control": "private, no-store" };
 
 export async function GET(request: Request) {
-  const limitedResponse = await rateLimitRequest(request, {
+  const rateLimit = await rateLimitRequest(request, {
     keyPrefix: "api:set-progress",
     limit: 120,
     windowMs: 60_000,
   });
 
-  if (limitedResponse) {
-    return limitedResponse;
+  if (rateLimit.limitedResponse) {
+    return rateLimit.limitedResponse;
   }
 
   try {
@@ -24,9 +24,12 @@ export async function GET(request: Request) {
       {},
     );
 
-    return NextResponse.json(
-      { progress: progress ? Object.fromEntries(progress) : null },
-      { headers: privateHeaders },
+    return applyRateLimitHeaders(
+      NextResponse.json(
+        { progress: progress ? Object.fromEntries(progress) : null },
+        { headers: privateHeaders },
+      ),
+      rateLimit,
     );
   } catch (error) {
     logError("api.set_progress.failed", error);

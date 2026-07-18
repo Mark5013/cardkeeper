@@ -4,7 +4,7 @@ import { z } from "zod";
 import { searchCatalogPokemonCards } from "@/lib/catalog/data";
 import { normalizeSearchCardSort } from "@/lib/catalog/search-card-sort";
 import { measureOperation } from "@/lib/observability";
-import { rateLimitRequest } from "@/lib/rate-limit";
+import { applyRateLimitHeaders, rateLimitRequest } from "@/lib/rate-limit";
 
 const searchSchema = z.object({
   query: z.string().trim().min(1, "Enter a card name or number.").max(110),
@@ -15,14 +15,14 @@ const searchSchema = z.object({
 });
 
 export async function GET(request: Request) {
-  const limitedResponse = await rateLimitRequest(request, {
+  const rateLimit = await rateLimitRequest(request, {
     keyPrefix: "api:cards-search",
     limit: 120,
     windowMs: 60_000,
   });
 
-  if (limitedResponse) {
-    return limitedResponse;
+  if (rateLimit.limitedResponse) {
+    return rateLimit.limitedResponse;
   }
 
   const url = new URL(request.url);
@@ -36,16 +36,19 @@ export async function GET(request: Request) {
   }
 
   try {
-    return NextResponse.json(
-      await measureOperation(
-        "api.cards_search",
-        () =>
-          searchCatalogPokemonCards({
-            ...parsed.data,
-            sort: normalizeSearchCardSort(parsed.data.sort),
-          }),
-        { mode: parsed.data.mode, page: parsed.data.page, pageSize: parsed.data.pageSize },
+    return applyRateLimitHeaders(
+      NextResponse.json(
+        await measureOperation(
+          "api.cards_search",
+          () =>
+            searchCatalogPokemonCards({
+              ...parsed.data,
+              sort: normalizeSearchCardSort(parsed.data.sort),
+            }),
+          { mode: parsed.data.mode, page: parsed.data.page, pageSize: parsed.data.pageSize },
+        ),
       ),
+      rateLimit,
     );
   } catch {
     return NextResponse.json(
