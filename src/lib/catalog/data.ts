@@ -690,7 +690,7 @@ export const getCatalogPokemonCardsBySet = cache(async (
   });
 });
 
-export const getCatalogPokemonCard = cache(async (id: string) => {
+export const getCatalogPokemonCardWithSource = cache(async (id: string) => {
   try {
     const [localCard] = await db
       .select()
@@ -700,13 +700,18 @@ export const getCatalogPokemonCard = cache(async (id: string) => {
 
     if (localCard) {
       const card = await mapCardWithCurrentPrices(localCard);
-      if (card) return card;
+      if (card) return { card, source: "local" } as const;
     }
   } catch (error) {
     logError("catalog.local_card.failed", error, { cardId: id });
   }
 
-  return getPokemonCard(id);
+  const card = await getPokemonCard(id);
+  return card ? ({ card, source: "provider" } as const) : null;
+});
+
+export const getCatalogPokemonCard = cache(async (id: string) => {
+  return (await getCatalogPokemonCardWithSource(id))?.card ?? null;
 });
 
 export const getCatalogPokemonCardPriceHistory = cache(async (id: string) => {

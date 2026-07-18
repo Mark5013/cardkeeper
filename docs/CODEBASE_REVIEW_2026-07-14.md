@@ -80,17 +80,40 @@ Recommended changes:
 ### 3. Avoid catalog upserts on every collection mutation
 
 **Relevant file:** `src/lib/catalog/sync.ts`  
-**Priority:** High for write throughput
+**Priority:** Medium for correctness; low for write throughput at the current observed usage
+
+**Implementation status (2026-07-17): Complete, with the narrower scope established during reassessment.**
+
+What the code shows:
+
+- `getCatalogPokemonCard` normally reads the local `cards` row, but it deliberately falls back to the live Pokémon TCG API when the local card is missing. The full set/card creation path in `ensureCardVariant` therefore has a legitimate purpose and should not be removed outright.
+- For a local card, `getCatalogPokemonCard` enriches the returned provider object with current local pricing before passing it to `ensureCardVariant`. Writing that derived object back to `cards.provider_data` during a collection mutation can blur the boundary between the imported provider payload and locally derived price data.
+- Every call still conflict-updates the set, card, and variant. This advances `lastImportedAt`/`updatedAt`, fires update triggers, rewrites the card JSON, and takes row locks even when the requested variant already exists. A collection action should not make an existing catalog row appear freshly imported.
+- The price refresh intentionally owns only `condition = 'unspecified'` market-price variants. User-selected condition variants remain legitimately on-demand; pre-creating every printing/condition combination in the catalog import is unnecessary.
+
+A read-only aggregate check of the configured database on 2026-07-17 found 20,479 cards with an average `provider_data` size of about 1,488 bytes, 35,009 `unspecified` variants, and 155,105 condition-specific variants, while only 8 collection items referenced condition-specific variants. This is not evidence of a current throughput emergency, but it does mean the normal collection mutation is overwhelmingly likely to encounter an existing card and variant, making three unconditional conflict-updates wasteful.
+
+Implemented narrow change:
+
+1. Look up the local card ID and requested variant ID by provider card ID, language, printing, and condition.
+2. Return immediately without writes when the variant exists.
+3. When the local card exists but the variant does not, insert only the variant with `ON CONFLICT DO NOTHING RETURNING`; if a concurrent request won the race, select the existing ID.
+4. `getCatalogPokemonCardWithSource` explicitly identifies locally mapped versus live-provider cards. Only a provider-sourced card can enter the current conflict-safe set/card/variant transaction; a local derived card is never written back as provider data.
+5. Preserve all current unique constraints. The resolver logs `existing`, `variant-created`, `variant-race`, or `catalog-fallback` with duration so production path frequency and latency can be measured.
+
+The branch coordinator lives in `src/lib/catalog/variant-resolution.ts` so the behavior is deterministic to test without a live database. Six focused tests cover the existing variant, missing variant, provider fallback, disappearing local row, concurrent winner, and unresolved-conflict paths. The Drizzle adapter in `src/lib/catalog/sync.ts` retains the database unique constraint as the final race-safety boundary and no longer updates an existing variant merely to retrieve its ID.
+
+**Verification (2026-07-17):** `npm run test:unit` (33 tests passed), `npm run typecheck` (passed), `npm run lint` (passed), `npm run build` (completed successfully), and `git diff --check` (passed). During sandboxed builds, the existing catalog page fallback logged blocked database/API network access, but all 19 static pages and the production build still completed with exit code 0.
+
+Changes that do **not** currently make sense:
+
+- Do not remove live-API on-demand catalog creation; it supports cards that have not reached the scheduled import yet.
+- Do not bulk-create all five user conditions for every printing during catalog import; most such rows would remain unreferenced.
+- Do not treat this as a high-priority scaling project without mutation latency, lock, or write-volume evidence. The small lookup-first refactor is justified by data ownership and freshness semantics even before a performance benchmark.
+
+Original finding:
 
 `ensureCardVariant` performs an upsert for the set, an upsert for the card (including the full provider payload), and an upsert for the variant inside every transaction. This is race-safe, but it creates repeated writes, row locks, index maintenance, and enlarged database write volume when a user adds a card that is already present in the imported catalog.
-
-Recommended changes:
-
-- Make the scheduled catalog import the normal owner of set/card synchronization.
-- On collection mutation, first resolve an existing variant using its unique key and take the upsert path only when data is genuinely missing.
-- Avoid updating `updatedAt`, `lastImportedAt`, and large provider JSON solely because an existing card was added to a collection.
-- If on-demand catalog creation is required, use a fast existing-row lookup followed by the current conflict-safe fallback; retain unique constraints to handle races.
-- Measure transaction duration and rows written before and after the change.
 
 ### 4. Review the global authentication proxy scope
 

@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 
-import { getCatalogPokemonCard } from "@/lib/catalog/data";
+import { getCatalogPokemonCardWithSource } from "@/lib/catalog/data";
 import { ensureCardVariant } from "@/lib/catalog/sync";
 import { CARD_CONDITIONS, type CardCondition } from "@/lib/collection/options";
 import { isSameOriginRequest } from "@/lib/http/security";
@@ -78,14 +78,15 @@ export async function PUT(request: Request, context: RouteContext<"/api/collecti
     );
   }
 
-  const card = await getCatalogPokemonCard(cardId.data);
-  if (!card) {
+  const catalogCard = await getCatalogPokemonCardWithSource(cardId.data);
+  if (!catalogCard) {
     return NextResponse.json(
       { error: "Card not found." },
       { status: 404, headers: privateHeaders },
     );
   }
 
+  const { card } = catalogCard;
   const availablePrintings = getCardPrintingOptions(card).map((printing) => printing.value);
   if (!availablePrintings.includes(parsedBody.data.printing)) {
     return NextResponse.json(
@@ -98,6 +99,7 @@ export async function PUT(request: Request, context: RouteContext<"/api/collecti
   try {
     variantId = await ensureCardVariant({
       card,
+      catalogSource: catalogCard.source,
       printing: parsedBody.data.printing,
       condition: parsedBody.data.condition,
     });
