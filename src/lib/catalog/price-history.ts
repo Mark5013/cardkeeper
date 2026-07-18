@@ -8,6 +8,8 @@ export type DailyPriceHistoryPoint = PriceHistoryPoint & {
   isRecorded: boolean;
 };
 
+export type PriceHistoryRange = "1w" | "1m" | "3m" | "6m" | "1y" | "2y" | "max";
+
 const DAY_MS = 24 * 60 * 60 * 1000;
 
 function getUtcDayTimestamp(value: string) {
@@ -57,4 +59,39 @@ export function expandDailyPricePoints(sourcePoints: PriceHistoryPoint[]) {
   }
 
   return chartPoints;
+}
+
+export function filterDailyPricePointsByRange(
+  points: DailyPriceHistoryPoint[],
+  range: PriceHistoryRange,
+) {
+  if (range === "max" || points.length === 0) return points;
+
+  const latestTimestamp = points[points.length - 1].timestamp;
+  const startTimestamp =
+    range === "1w"
+      ? latestTimestamp - 6 * DAY_MS
+      : subtractUtcMonths(latestTimestamp, {
+          "1m": 1,
+          "3m": 3,
+          "6m": 6,
+          "1y": 12,
+          "2y": 24,
+        }[range]);
+
+  return points.filter((point) => point.timestamp >= startTimestamp);
+}
+
+function subtractUtcMonths(timestamp: number, months: number) {
+  const source = new Date(timestamp);
+  const absoluteMonth = source.getUTCFullYear() * 12 + source.getUTCMonth() - months;
+  const targetYear = Math.floor(absoluteMonth / 12);
+  const targetMonth = ((absoluteMonth % 12) + 12) % 12;
+  const targetMonthLastDay = new Date(Date.UTC(targetYear, targetMonth + 1, 0)).getUTCDate();
+
+  return Date.UTC(
+    targetYear,
+    targetMonth,
+    Math.min(source.getUTCDate(), targetMonthLastDay),
+  );
 }

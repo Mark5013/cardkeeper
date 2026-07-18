@@ -1,7 +1,10 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { expandDailyPricePoints } from "../../src/lib/catalog/price-history.ts";
+import {
+  expandDailyPricePoints,
+  filterDailyPricePointsByRange,
+} from "../../src/lib/catalog/price-history.ts";
 
 test("carries the latest recorded price across missing UTC days", () => {
   const points = expandDailyPricePoints([
@@ -43,4 +46,37 @@ test("uses the latest recorded value when a UTC day has multiple observations", 
 
 test("ignores invalid observation timestamps", () => {
   assert.deepEqual(expandDailyPricePoints([{ observedAt: "invalid", amountUsd: 10 }]), []);
+});
+
+test("limits the chart to seven inclusive UTC days for the one-week range", () => {
+  const points = expandDailyPricePoints([
+    { observedAt: "2026-07-01T00:00:00.000Z", amountUsd: 10 },
+    { observedAt: "2026-07-18T00:00:00.000Z", amountUsd: 12 },
+  ]);
+  const filtered = filterDailyPricePointsByRange(points, "1w");
+
+  assert.equal(filtered.length, 7);
+  assert.equal(filtered[0].observedAt.slice(0, 10), "2026-07-12");
+  assert.equal(filtered[0].amountUsd, 10);
+  assert.equal(filtered.at(-1).observedAt.slice(0, 10), "2026-07-18");
+});
+
+test("uses calendar-month boundaries and clamps shorter target months", () => {
+  const points = expandDailyPricePoints([
+    { observedAt: "2026-01-01T00:00:00.000Z", amountUsd: 10 },
+    { observedAt: "2026-03-31T00:00:00.000Z", amountUsd: 12 },
+  ]);
+  const filtered = filterDailyPricePointsByRange(points, "1m");
+
+  assert.equal(filtered[0].observedAt.slice(0, 10), "2026-02-28");
+  assert.equal(filtered.at(-1).observedAt.slice(0, 10), "2026-03-31");
+});
+
+test("returns the complete expanded history for the maximum range", () => {
+  const points = expandDailyPricePoints([
+    { observedAt: "2024-02-08T00:00:00.000Z", amountUsd: 10 },
+    { observedAt: "2026-07-18T00:00:00.000Z", amountUsd: 12 },
+  ]);
+
+  assert.equal(filterDailyPricePointsByRange(points, "max"), points);
 });
