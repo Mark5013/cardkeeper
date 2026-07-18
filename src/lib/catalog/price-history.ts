@@ -82,6 +82,19 @@ export function filterDailyPricePointsByRange(
   return points.filter((point) => point.timestamp >= startTimestamp);
 }
 
+export function calculatePriceChangePercentage(points: PriceHistoryPoint[]) {
+  if (points.length < 2) return null;
+
+  const startingAmount = points[0].amountUsd;
+  const latestAmount = points[points.length - 1].amountUsd;
+
+  if (!Number.isFinite(startingAmount) || !Number.isFinite(latestAmount) || startingAmount <= 0) {
+    return null;
+  }
+
+  return ((latestAmount - startingAmount) / startingAmount) * 100;
+}
+
 function subtractUtcMonths(timestamp: number, months: number) {
   const source = new Date(timestamp);
   const absoluteMonth = source.getUTCFullYear() * 12 + source.getUTCMonth() - months;

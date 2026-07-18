@@ -12,6 +12,7 @@ import {
 } from "recharts";
 
 import {
+  calculatePriceChangePercentage,
   expandDailyPricePoints,
   filterDailyPricePointsByRange,
   type DailyPriceHistoryPoint,
@@ -36,6 +37,7 @@ type PriceHistorySummaryProps = {
   recordedPointCount: number;
   selectedSeries: PriceHistorySeries;
   chartDayCount: number;
+  priceChangePercentage: number | null;
   rangeLabel: string;
 };
 
@@ -49,7 +51,7 @@ const PRICE_HISTORY_RANGES: { value: PriceHistoryRange; shortLabel: string; labe
   { value: "max", shortLabel: "Max", label: "Maximum" },
 ];
 
-const DEFAULT_PRICE_HISTORY_RANGE: PriceHistoryRange = "1y";
+const DEFAULT_PRICE_HISTORY_RANGE: PriceHistoryRange = "1w";
 
 const usd = new Intl.NumberFormat("en-US", {
   style: "currency",
@@ -60,6 +62,11 @@ const compactUsd = new Intl.NumberFormat("en-US", {
   style: "currency",
   currency: "USD",
   maximumFractionDigits: 0,
+});
+
+const percentage = new Intl.NumberFormat("en-US", {
+  maximumFractionDigits: 2,
+  minimumFractionDigits: 2,
 });
 
 const dateFormatter = new Intl.DateTimeFormat("en-US", {
@@ -100,14 +107,33 @@ function PriceHistorySummary({
   recordedPointCount,
   selectedSeries,
   chartDayCount,
+  priceChangePercentage,
   rangeLabel,
 }: PriceHistorySummaryProps) {
+  const priceChangeLabel =
+    priceChangePercentage === null
+      ? "Not available"
+      : `${priceChangePercentage > 0 ? "+" : ""}${percentage.format(priceChangePercentage)}%`;
+  const priceChangeColor =
+    priceChangePercentage === null || priceChangePercentage === 0
+      ? "text-[var(--muted)]"
+      : priceChangePercentage > 0
+        ? "text-emerald-400"
+        : "text-[var(--danger)]";
+
   return (
     <aside className="rounded-lg border border-[var(--line)] bg-[var(--surface)] p-3">
       <div>
         <p className="text-xs font-bold uppercase tracking-[0.08em] text-[var(--muted)]">Current market</p>
         <p className="mt-1.5 text-2xl font-black text-[var(--ink)]">{latestPoint.priceLabel}</p>
         <p className="mt-1 text-xs text-[var(--muted)]">Latest snapshot: {latestPoint.dateLabel}</p>
+      </div>
+
+      <div className="mt-4 border-t border-[var(--line)] pt-3">
+        <p className="text-xs font-bold uppercase tracking-[0.08em] text-[var(--muted)]">
+          {rangeLabel} change
+        </p>
+        <p className={`mt-1.5 text-xl font-black ${priceChangeColor}`}>{priceChangeLabel}</p>
       </div>
 
       <div className="mt-4 border-t border-[var(--line)] pt-3 text-xs text-[var(--muted)]">
@@ -153,6 +179,7 @@ export function PriceHistoryChart({ series }: { series: PriceHistorySeries[] }) 
   const selectedRangeLabel =
     PRICE_HISTORY_RANGES.find((range) => range.value === selectedRange)?.label ?? "Price history";
   const recordedPointCount = points.filter((point) => point.isRecorded).length;
+  const priceChangePercentage = calculatePriceChangePercentage(points);
 
   return (
     <div className="mt-4 grid gap-4 2xl:grid-cols-[minmax(0,1fr)_14rem]">
@@ -229,6 +256,7 @@ export function PriceHistoryChart({ series }: { series: PriceHistorySeries[] }) 
 
       <PriceHistorySummary
         latestPoint={latestPoint}
+        priceChangePercentage={priceChangePercentage}
         recordedPointCount={recordedPointCount}
         rangeLabel={selectedRangeLabel}
         selectedSeries={selectedSeries}

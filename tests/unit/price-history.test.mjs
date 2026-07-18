@@ -2,9 +2,44 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
+  calculatePriceChangePercentage,
   expandDailyPricePoints,
   filterDailyPricePointsByRange,
 } from "../../src/lib/catalog/price-history.ts";
+
+test("calculates range change from the first and latest displayed prices", () => {
+  assert.equal(
+    calculatePriceChangePercentage([
+      { observedAt: "2026-07-12T00:00:00.000Z", amountUsd: 80 },
+      { observedAt: "2026-07-18T00:00:00.000Z", amountUsd: 100 },
+    ]),
+    25,
+  );
+  assert.equal(
+    calculatePriceChangePercentage([
+      { observedAt: "2026-07-12T00:00:00.000Z", amountUsd: 100 },
+      { observedAt: "2026-07-18T00:00:00.000Z", amountUsd: 75 },
+    ]),
+    -25,
+  );
+});
+
+test("does not calculate a percentage without a usable comparison price", () => {
+  assert.equal(calculatePriceChangePercentage([]), null);
+  assert.equal(
+    calculatePriceChangePercentage([
+      { observedAt: "2026-07-18T00:00:00.000Z", amountUsd: 100 },
+    ]),
+    null,
+  );
+  assert.equal(
+    calculatePriceChangePercentage([
+      { observedAt: "2026-07-12T00:00:00.000Z", amountUsd: 0 },
+      { observedAt: "2026-07-18T00:00:00.000Z", amountUsd: 100 },
+    ]),
+    null,
+  );
+});
 
 test("carries the latest recorded price across missing UTC days", () => {
   const points = expandDailyPricePoints([
