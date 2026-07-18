@@ -46,3 +46,16 @@ The migration follows TCGCSV's access guidance: it identifies Cardkeeper with a 
 On 2026-07-18, the live dry run uniquely resolved all 102 Shadowless and all 102 Unlimited cards. It prepared 304 current market-price identities: 202 Shadowless printing identities and 102 Unlimited identities. The full write path also completed successfully inside a forced-rollback transaction.
 
 Apply the production migration only after this code is pushed and deployed, because the deployed Next.js image allowlist must recognize `tcgplayer-cdn.tcgplayer.com`. After applying it, rebuild the compressed TCGCSV historical stage oldest-first and upload it so both editions have canonical history. Use a fresh or reset stage; a stage created before the split contains the old product-to-variant mapping.
+
+## Production completion
+
+Commit `7a8984c` was pushed to `main` on 2026-07-18, after which the guarded migration was applied to the configured production database.
+
+- Both sets contain 102 cards and 102 unique canonical TCGplayer products.
+- Shadowless has 202 current and historical printing identities; Unlimited has 102.
+- Shadowless history contains 27,446 changed prices and Unlimited history contains 58,937, both spanning 2024-02-08 through 2026-07-17.
+- Shadowless Machamp maps to product `107004`; Unlimited Machamp maps to product `42425`.
+- A fresh complete stage rebuilt 891 daily archives into 34,687 compressed series containing 7,044,396 changed prices.
+- The exact upload verifier passed with no malformed arrays, invalid date ordering, or latest-value mismatches against `current_prices`.
+
+The first exact-count verification exposed one obsolete 194-point `normal` series for Unlimited Machamp. It had no current price and no canonical product reference. That single stale pre-split series was removed, after which the retained stage passed exact verification. The recovery stage remains at `C:\Users\mark1\AppData\Local\Temp\cardkeeper-tcgcsv-history-base-editions\tcgcsv-history-stage.sqlite`.
