@@ -106,7 +106,14 @@ export function SetsBrowser({ sets, collectionProgress }: SetsBrowserProps) {
                 </div>
                 {set.images?.symbol ? (
                   <span className="relative size-10 shrink-0">
-                    <Image src={set.images.symbol} alt="" fill sizes="40px" className="object-contain" />
+                    <Image
+                      src={set.images.symbol}
+                      alt=""
+                      fill
+                      sizes="40px"
+                      unoptimized
+                      className="object-contain"
+                    />
                   </span>
                 ) : null}
               </div>

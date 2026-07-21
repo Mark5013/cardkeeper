@@ -398,7 +398,11 @@ export function SearchResultsBrowser({
 
       {cards.length > 0 ? (
         <>
-          {isRefreshing ? <LoadingCardGrid /> : <CardResultGrid cards={cards} onCardNavigate={handleCardNavigate} />}
+          {isRefreshing ? (
+            <LoadingCardGrid />
+          ) : (
+            <CardResultGrid cards={cards} onCardNavigate={handleCardNavigate} unoptimizedCardImages />
+          )}
           <div ref={sentinelRef} className="h-12" aria-hidden="true" />
           {isLoading ? (
             <div className="mt-6 flex items-center justify-center gap-3 text-sm font-semibold text-[var(--muted)]" aria-live="polite">

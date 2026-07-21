@@ -48,10 +48,11 @@ export function CollectionCardGrid({
             <Link className="block" href={`/cards/${encodeURIComponent(item.providerCardId)}`}>
               <div className="relative aspect-[4/3] overflow-hidden bg-[var(--surface-2)]">
                 <ImageWithFallback
-                  src={item.imageLargeUrl || item.imageSmallUrl}
+                  src={item.imageSmallUrl || item.imageLargeUrl}
                   alt={`${item.cardName} card`}
                   fill
                   sizes="(max-width: 639px) 42vw, (max-width: 1023px) 22vw, 160px"
+                  unoptimized
                   className="object-contain p-5 transition duration-300 group-hover:scale-[1.03]"
                 />
                 <span className="absolute right-3 top-3 rounded-full border border-[var(--line)] bg-[var(--background)] px-2.5 py-0.5 text-xs font-bold text-[var(--ink)] shadow-[0_10px_24px_rgb(0_0_0_/_28%)]">

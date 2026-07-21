@@ -171,7 +171,14 @@ export function CardSearch({ initialQuery = "" }: { initialQuery?: string }) {
                     onClick={() => openCard(card)}
                   >
                     <span className="suggestion-art">
-                      <ImageWithFallback src={card.imageSmallUrl} alt="" fill sizes="40px" className="object-cover" />
+                      <ImageWithFallback
+                        src={card.imageSmallUrl}
+                        alt=""
+                        fill
+                        sizes="40px"
+                        unoptimized
+                        className="object-cover"
+                      />
                     </span>
                     <span className="min-w-0 text-left">
                       <span className="block truncate font-semibold text-[var(--ink)]">{card.name}</span>
