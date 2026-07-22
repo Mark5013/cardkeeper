@@ -19,6 +19,23 @@ export function formatPrinting(value: string) {
     .replace(/\b\w/g, (letter) => letter.toUpperCase());
 }
 
+export function formatCardPrinting(value: string, providerSetId?: string) {
+  const normalizedValue = normalizePrinting(value);
+
+  if (providerSetId === "base1") {
+    const shadowlessLabels: Record<string, string> = {
+      "1st_edition": "1st Edition Shadowless",
+      "1st_edition_holofoil": "1st Edition Shadowless Holofoil",
+      unlimited: "Shadowless",
+      unlimited_holofoil: "Shadowless Holofoil",
+    };
+
+    return shadowlessLabels[normalizedValue] ?? formatPrinting(normalizedValue);
+  }
+
+  return formatPrinting(normalizedValue);
+}
+
 export function getCardPrintingOptions(card: PokemonTcgCard): CardPrintingOption[] {
   const prices = Object.entries(card.tcgplayer?.prices ?? {});
 
@@ -28,6 +45,6 @@ export function getCardPrintingOptions(card: PokemonTcgCard): CardPrintingOption
 
   return prices.map(([printing, price]) => {
     const value = normalizePrinting(printing);
-    return { value, label: formatPrinting(value), price };
+    return { value, label: formatCardPrinting(value, card.set.id), price };
   });
 }

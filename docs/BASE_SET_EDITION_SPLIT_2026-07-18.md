@@ -22,7 +22,7 @@ Card detail listing links prefer the normalized local `card_variant_external_ref
 
 The existing generic `normal` and `holofoil` Base variants contain Unlimited prices, so the migration moves those variant rows to their matching Unlimited card. It does not delete and recreate them. Their UUIDs, price-series relationships, and any future collection references therefore remain stable.
 
-The `1st_edition`, `1st_edition_holofoil`, `unlimited`, and `unlimited_holofoil` variants stay on the Shadowless cards because those are the printing names supplied by TCGCSV group `1663`. The migration then replaces Base Set TCGplayer product references and current TCGCSV prices with the exact canonical edition mappings.
+The `1st_edition`, `1st_edition_holofoil`, `unlimited`, and `unlimited_holofoil` variant keys stay on the Shadowless cards because those are the internal printing values supplied by TCGCSV group `1663`. TCGplayer's `unlimited` value in this group means the non-1st-Edition Shadowless SKU; it does **not** represent an "Unlimited Shadowless" printing. Cardkeeper therefore displays these as **1st Edition Shadowless**, **1st Edition Shadowless Holofoil**, **Shadowless**, and **Shadowless Holofoil** while retaining the source keys for stable price identity. The separate `base1-unlimited` catalog continues to represent the later Unlimited printing. The migration then replaces Base Set TCGplayer product references and current TCGCSV prices with the exact canonical edition mappings.
 
 ## Guarded migration
 

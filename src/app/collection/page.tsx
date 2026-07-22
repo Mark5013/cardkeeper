@@ -10,7 +10,7 @@ import {
   getCurrentCollection,
   getCurrentCollectionValueHistory,
 } from "@/lib/collection/data";
-import { formatPrinting } from "@/lib/pokemon-tcg/printing";
+import { formatCardPrinting } from "@/lib/pokemon-tcg/printing";
 
 export const metadata: Metadata = { title: "My collection" };
 
@@ -31,14 +31,18 @@ export default async function CollectionPage() {
     collection.items.length > 0
       ? (await getCatalogPokemonSets()).map((set) => ({ id: set.id, name: set.name }))
       : [];
-  const finishOptions = Array.from(
-    new Map(
-      collection.items.map((item) => [
-        item.printing,
-        { id: item.printing, name: formatPrinting(item.printing) },
-      ]),
-    ).values(),
-  ).sort((left, right) => left.name.localeCompare(right.name, "en", { sensitivity: "base" }));
+  const finishLabelsByPrinting = new Map<string, Set<string>>();
+  for (const item of collection.items) {
+    const labels = finishLabelsByPrinting.get(item.printing) ?? new Set<string>();
+    labels.add(formatCardPrinting(item.printing, item.providerSetId));
+    finishLabelsByPrinting.set(item.printing, labels);
+  }
+  const finishOptions = Array.from(finishLabelsByPrinting, ([id, labels]) => ({
+    id,
+    name: Array.from(labels).sort((left, right) =>
+      left.localeCompare(right, "en", { sensitivity: "base" }),
+    ).join(" / "),
+  })).sort((left, right) => left.name.localeCompare(right.name, "en", { sensitivity: "base" }));
   const conditionOptions = Array.from(
     new Map(
       collection.items.map((item) => [

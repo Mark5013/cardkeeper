@@ -94,7 +94,7 @@ export default async function CardDetailPage({ params }: PageProps<"/cards/[id]"
 
   const [ownedVariants, priceHistory, ebayListings] = await Promise.all([
     getOwnedCardVariants(card.id),
-    getCatalogPokemonCardPriceHistory(card.id),
+    getCatalogPokemonCardPriceHistory(card.id, card.set.id),
     getEbayListingsForCard(card),
   ]);
   const printings = getCardPrintingOptions(card);

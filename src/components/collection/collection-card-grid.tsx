@@ -5,7 +5,7 @@ import Link from "next/link";
 import { ImageWithFallback } from "@/components/image-with-fallback";
 import { CARD_CONDITIONS } from "@/lib/collection/options";
 import type { CollectionItemDto } from "@/lib/collection/types";
-import { formatPrinting } from "@/lib/pokemon-tcg/printing";
+import { formatCardPrinting } from "@/lib/pokemon-tcg/printing";
 
 const usd = new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" });
 
@@ -26,6 +26,7 @@ export function CollectionCardGrid({
     <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
       {items.map((item) => {
         const isDecrementing = decrementingVariantIds.has(item.cardVariantId);
+        const printingLabel = formatCardPrinting(item.printing, item.providerSetId);
 
         return (
           <article
@@ -35,7 +36,7 @@ export function CollectionCardGrid({
             <button
               type="button"
               className="collection-card-remove-button"
-              aria-label={`Remove one ${item.cardName} ${formatPrinting(item.printing)} ${formatCondition(item.condition)} from your collection`}
+              aria-label={`Remove one ${item.cardName} ${printingLabel} ${formatCondition(item.condition)} from your collection`}
               disabled={isDecrementing}
               onClick={() => onDecrementItem(item)}
             >
@@ -67,7 +68,7 @@ export function CollectionCardGrid({
                 <h2 className="mt-1.5 text-base font-bold leading-6">{item.cardName}</h2>
 
                 <div className="mt-3 flex flex-wrap gap-1.5">
-                  <span className="collection-pill">{formatPrinting(item.printing)}</span>
+                  <span className="collection-pill">{printingLabel}</span>
                   <span className="collection-pill">{formatCondition(item.condition)}</span>
                 </div>
 

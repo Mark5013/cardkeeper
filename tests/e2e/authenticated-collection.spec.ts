@@ -14,7 +14,16 @@ type SaveCollectionResult = {
   } | null;
 };
 
-async function saveCollectionItem(page: Page, cardId: string, quantity: number) {
+type CardSearchResponse = {
+  cards?: { id: string; printings: { value: string; label: string }[] }[];
+};
+
+async function saveCollectionItem(
+  page: Page,
+  cardId: string,
+  quantity: number,
+  printing = "normal",
+) {
   const requestUrl = new URL(`/api/collection/cards/${encodeURIComponent(cardId)}`, page.url());
   const response = await page.request.put(requestUrl.toString(), {
     headers: {
@@ -24,7 +33,7 @@ async function saveCollectionItem(page: Page, cardId: string, quantity: number) 
       "X-Cardkeeper-Request": "same-origin",
     },
     data: {
-      printing: "normal",
+      printing,
       condition: "near_mint",
       quantity,
     },
@@ -46,6 +55,21 @@ async function removeCollectionItem(page: Page, variantId: string) {
   });
 
   return { ok: response.ok(), status: response.status() };
+}
+
+async function getAdvertisedPrinting(page: Page, cardId: string, query: string) {
+  const response = await page.request.get(
+    `/api/cards/search?query=${encodeURIComponent(query)}&mode=search&pageSize=50`,
+  );
+  if (!response.ok()) throw new Error(`Unable to load printings for ${cardId}.`);
+
+  const payload = (await response.json()) as CardSearchResponse;
+  const printing = payload.cards
+    ?.find((card) => card.id === cardId)
+    ?.printings.at(0)?.value;
+
+  if (!printing) throw new Error(`Expected ${cardId} to advertise at least one finish.`);
+  return printing;
 }
 
 test.describe("authenticated collection smoke", () => {
@@ -77,7 +101,8 @@ test.describe("authenticated collection smoke", () => {
       throw new Error("Expected card detail URL to include a card id.");
     }
 
-    const addResult = await saveCollectionItem(page, cardId, 2);
+    const printing = await getAdvertisedPrinting(page, cardId, cardName);
+    const addResult = await saveCollectionItem(page, cardId, 2, printing);
     expect(addResult.ok, addResult.body?.error ?? `Save failed with ${addResult.status}`).toBeTruthy();
     const variantId = addResult.body?.item?.variantId;
 
@@ -106,7 +131,7 @@ test.describe("authenticated collection smoke", () => {
     await page.waitForLoadState("networkidle");
     await expect(page.getByRole("heading", { name: /You own 2/ })).toBeVisible();
 
-    const updateResult = await saveCollectionItem(page, cardId, 3);
+    const updateResult = await saveCollectionItem(page, cardId, 3, printing);
     expect(updateResult.ok, updateResult.body?.error ?? `Update failed with ${updateResult.status}`).toBeTruthy();
 
     await page.goto(cardUrl);
@@ -117,5 +142,65 @@ test.describe("authenticated collection smoke", () => {
 
     await page.goto(cardUrl);
     await expect(page.getByRole("heading", { name: "Add this card" })).toBeVisible();
+  });
+
+  test("split Base Set cards advertise finishes accepted by collection updates", async ({
+    page,
+  }) => {
+    await page.goto("/login?next=/search?query=Charmander");
+    await page.getByRole("textbox", { name: "Email" }).fill(testEmail!);
+    await page.getByRole("textbox", { name: /password/i }).fill(testPassword!);
+    await Promise.all([
+      page.waitForURL(/\/search\?query=Charmander/),
+      page.getByRole("button", { name: "Sign in" }).click(),
+    ]);
+
+    const response = await page.request.get(
+      "/api/cards/search?query=Charmander&mode=search&pageSize=50",
+    );
+    expect(response.ok()).toBeTruthy();
+    const payload = (await response.json()) as CardSearchResponse;
+    const cardsById = new Map(payload.cards?.map((card) => [card.id, card]) ?? []);
+    const expectedPrintings = new Map<string, { value: string; label: string }[]>([
+      [
+        "base1-46",
+        [
+          { value: "1st_edition", label: "1st Edition Shadowless" },
+          { value: "unlimited", label: "Shadowless" },
+        ],
+      ],
+      ["base1-46-unlimited", [{ value: "normal", label: "Normal" }]],
+    ]);
+
+    for (const [cardId, printings] of expectedPrintings) {
+      const card = cardsById.get(cardId);
+      expect(card, `Expected search results to include ${cardId}`).toBeTruthy();
+      expect(
+        card?.printings.map(({ value, label }) => ({ value, label })),
+      ).toEqual(printings);
+
+      await page.goto(`/cards/${encodeURIComponent(cardId)}`);
+      const finishTrigger = page.getByRole("button", { name: "Finish" });
+      await expect(finishTrigger).toContainText(printings[0].label);
+      await finishTrigger.click();
+      for (const printing of printings) {
+        await expect(
+          page.getByRole("menuitemradio", { name: printing.label, exact: true }),
+        ).toBeVisible();
+      }
+      await page.keyboard.press("Escape");
+
+      const saveResult = await saveCollectionItem(page, cardId, 1, printings[0].value);
+      expect(
+        saveResult.ok,
+        saveResult.body?.error ?? `Save failed with ${saveResult.status}`,
+      ).toBeTruthy();
+
+      const variantId = saveResult.body?.item?.variantId;
+      if (!variantId) throw new Error(`Expected ${cardId} save to return a variant id.`);
+
+      const removeResult = await removeCollectionItem(page, variantId);
+      expect(removeResult.ok, `Cleanup failed with ${removeResult.status}`).toBeTruthy();
+    }
   });
 });
