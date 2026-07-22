@@ -28,7 +28,11 @@ export function FieldSelect<TValue extends string>({
       </DropdownMenu.Trigger>
       <DropdownMenu.Portal>
         <DropdownMenu.Content className="field-select-menu" align="start" sideOffset={6}>
-          <DropdownMenu.RadioGroup value={value} onValueChange={(nextValue) => onValueChange(nextValue as TValue)}>
+          <DropdownMenu.RadioGroup
+            className="control-menu-options"
+            value={value}
+            onValueChange={(nextValue) => onValueChange(nextValue as TValue)}
+          >
             {options.map((option) => (
               <DropdownMenu.RadioItem className="field-select-option" value={option.value} key={option.value}>
                 {option.label}
