@@ -3,15 +3,23 @@ import "server-only";
 import { and, asc, desc, eq, ilike, inArray, or, sql } from "drizzle-orm";
 
 import { db } from "@/db";
-import { cards, cardSets, cardVariants, collectionItems, currentPrices } from "@/db/schema";
+import {
+  cards,
+  cardSets,
+  cardVariants,
+  collectionItems,
+  currentPrices,
+  priceSeries,
+} from "@/db/schema";
 import { getCurrentUser } from "@/lib/supabase/auth";
 import { createClient } from "@/lib/supabase/server";
 import { logError, measureDbQuery } from "@/lib/observability";
 import { getCardPrintingOptions } from "@/lib/pokemon-tcg/printing";
 import type { PokemonTcgCard } from "@/lib/pokemon-tcg/types";
 
-import type { CollectionSummaryDto } from "./types";
+import type { CollectionSummaryDto, CollectionValueHistoryDto } from "./types";
 import type { OwnedCardVariantDto } from "./types";
+import { aggregateCollectionValueHistory } from "./value-history";
 
 type SetProgressRow = {
   card_variants: {
@@ -356,6 +364,139 @@ async function getCurrentMarketPricesByVariantId(variants: (typeof cardVariants.
   }
 
   return pricesByVariantId;
+}
+
+export async function getCurrentCollectionValueHistory(): Promise<CollectionValueHistoryDto | null> {
+  const user = await getCurrentUser();
+  if (!user) return null;
+
+  try {
+    const holdings = await measureDbQuery(
+      "db.collection_value_history_holdings",
+      () =>
+        db
+          .select({
+            cardId: cardVariants.cardId,
+            printing: cardVariants.printing,
+            quantity: collectionItems.quantity,
+          })
+          .from(collectionItems)
+          .innerJoin(cardVariants, eq(collectionItems.cardVariantId, cardVariants.id))
+          .where(eq(collectionItems.userId, user.id)),
+      {},
+    );
+
+    if (holdings.length === 0) {
+      return { points: [], pricedVariants: 0, totalVariants: 0 };
+    }
+
+    const uniqueCardIds = Array.from(new Set(holdings.map((holding) => holding.cardId)));
+    const uniquePrintings = Array.from(new Set(holdings.map((holding) => holding.printing)));
+    const historyRows = await measureDbQuery(
+      "db.collection_value_history_prices",
+      () =>
+        db
+          .select({
+            cardId: cardVariants.cardId,
+            printing: cardVariants.printing,
+            observedOn: priceSeries.observedOn,
+            amountsMinor: priceSeries.amountsMinor,
+            currentAmountMinor: currentPrices.amountMinor,
+            currentObservedAt: currentPrices.observedAt,
+          })
+          .from(cardVariants)
+          .leftJoin(
+            priceSeries,
+            and(
+              eq(priceSeries.cardVariantId, cardVariants.id),
+              eq(priceSeries.source, "tcgcsv"),
+              eq(priceSeries.priceType, "market"),
+              eq(priceSeries.currency, "USD"),
+            ),
+          )
+          .leftJoin(
+            currentPrices,
+            and(
+              eq(currentPrices.cardVariantId, cardVariants.id),
+              eq(currentPrices.source, "tcgcsv"),
+              eq(currentPrices.priceType, "market"),
+              eq(currentPrices.currency, "USD"),
+            ),
+          )
+          .where(
+            and(
+              eq(cardVariants.condition, "unspecified"),
+              eq(cardVariants.languageCode, "en"),
+              inArray(cardVariants.cardId, uniqueCardIds),
+              inArray(cardVariants.printing, uniquePrintings),
+            ),
+          ),
+      { holdingCount: holdings.length },
+    );
+    const pointsByCardPrinting = new Map<
+      string,
+      { observedAt: string; amountMinor: number }[]
+    >();
+
+    for (const row of historyRows) {
+      const key = `${row.cardId}:${row.printing}`;
+      const points: { observedAt: string; amountMinor: number }[] = [];
+      const pointCount = Math.min(
+        row.observedOn?.length ?? 0,
+        row.amountsMinor?.length ?? 0,
+      );
+
+      for (let index = 0; index < pointCount; index += 1) {
+        const observedOn = row.observedOn?.[index];
+        const amountMinor = row.amountsMinor?.[index];
+        if (observedOn === undefined || amountMinor === undefined) continue;
+
+        const observedValue = observedOn as string | Date;
+        const observedAt =
+          observedValue instanceof Date
+            ? observedValue.toISOString()
+            : `${observedValue.slice(0, 10)}T00:00:00.000Z`;
+        points.push({ observedAt, amountMinor });
+      }
+
+      if (row.currentObservedAt && row.currentAmountMinor !== null) {
+        points.push({
+          observedAt: row.currentObservedAt.toISOString(),
+          amountMinor: row.currentAmountMinor,
+        });
+      }
+
+      if (points.length > 0) pointsByCardPrinting.set(key, points);
+    }
+
+    const quantityByCardPrinting = new Map<string, number>();
+    for (const holding of holdings) {
+      const key = `${holding.cardId}:${holding.printing}`;
+      quantityByCardPrinting.set(
+        key,
+        (quantityByCardPrinting.get(key) ?? 0) + holding.quantity,
+      );
+    }
+
+    const points = aggregateCollectionValueHistory(
+      Array.from(quantityByCardPrinting, ([key, quantity]) => ({
+        quantity,
+        points: pointsByCardPrinting.get(key) ?? [],
+      })),
+    );
+    const pricedVariants = holdings.filter((holding) =>
+      pointsByCardPrinting.has(`${holding.cardId}:${holding.printing}`),
+    ).length;
+
+    return {
+      points,
+      pricedVariants,
+      totalVariants: holdings.length,
+    };
+  } catch (error) {
+    logError("db.collection_value_history.failed", error);
+    return { points: [], pricedVariants: 0, totalVariants: 0 };
+  }
 }
 
 export async function getOwnedCardVariants(

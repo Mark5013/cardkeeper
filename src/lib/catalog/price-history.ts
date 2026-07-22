@@ -10,6 +10,22 @@ export type DailyPriceHistoryPoint = PriceHistoryPoint & {
 
 export type PriceHistoryRange = "1w" | "1m" | "3m" | "6m" | "1y" | "2y" | "max";
 
+export const PRICE_HISTORY_RANGES: {
+  value: PriceHistoryRange;
+  shortLabel: string;
+  label: string;
+}[] = [
+  { value: "1w", shortLabel: "1W", label: "1 week" },
+  { value: "1m", shortLabel: "1M", label: "1 month" },
+  { value: "3m", shortLabel: "3M", label: "3 months" },
+  { value: "6m", shortLabel: "6M", label: "6 months" },
+  { value: "1y", shortLabel: "1Y", label: "1 year" },
+  { value: "2y", shortLabel: "2Y", label: "2 years" },
+  { value: "max", shortLabel: "Max", label: "Maximum" },
+];
+
+export const DEFAULT_PRICE_HISTORY_RANGE: PriceHistoryRange = "1w";
+
 const DAY_MS = 24 * 60 * 60 * 1000;
 
 function getUtcDayTimestamp(value: string) {

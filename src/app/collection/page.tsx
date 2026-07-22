@@ -3,9 +3,13 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 
 import { CollectionBrowser } from "@/components/collection/collection-browser";
+import { CollectionValueHistoryChart } from "@/components/collection/collection-value-history-chart";
 import { SiteHeader } from "@/components/site-header";
 import { getCatalogPokemonSets } from "@/lib/catalog/data";
-import { getCurrentCollection } from "@/lib/collection/data";
+import {
+  getCurrentCollection,
+  getCurrentCollectionValueHistory,
+} from "@/lib/collection/data";
 import { formatPrinting } from "@/lib/pokemon-tcg/printing";
 
 export const metadata: Metadata = { title: "My collection" };
@@ -14,7 +18,10 @@ const usd = new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" 
 const COLLECTION_PAGE_SIZE = 24;
 
 export default async function CollectionPage() {
-  const collection = await getCurrentCollection();
+  const [collection, collectionValueHistory] = await Promise.all([
+    getCurrentCollection(),
+    getCurrentCollectionValueHistory(),
+  ]);
   if (!collection) redirect("/login?next=/collection");
   const collectionPage =
     collection.items.length > 0
@@ -75,6 +82,28 @@ export default async function CollectionPage() {
             ) : null}
           </article>
         </div>
+
+        {collection.items.length > 0 ? (
+          <section className="mt-10" aria-labelledby="collection-value-history-heading">
+            <p className="text-sm font-semibold text-[var(--accent)]">Market history</p>
+            <h2 className="mt-1 text-2xl font-bold" id="collection-value-history-heading">
+              Collection value history
+            </h2>
+            <p className="mt-2 max-w-3xl text-sm leading-6 text-[var(--muted)]">
+              Historical market value of the cards you own now. Adding or removing a card
+              recalculates the full chart.
+            </p>
+            <CollectionValueHistoryChart
+              history={
+                collectionValueHistory ?? {
+                  points: [],
+                  pricedVariants: 0,
+                  totalVariants: collection.uniqueVariants,
+                }
+              }
+            />
+          </section>
+        ) : null}
 
         {collection.items.length === 0 ? (
           <div className="mt-10 rounded-lg border border-dashed border-[var(--line)] bg-[var(--surface)] px-6 py-16 text-center">

@@ -31,6 +31,15 @@ export type CollectionSummaryDto = {
   hasNextPage: boolean;
 };
 
+export type CollectionValueHistoryDto = {
+  points: {
+    observedAt: string;
+    amountUsd: number;
+  }[];
+  pricedVariants: number;
+  totalVariants: number;
+};
+
 export type OwnedCardVariantDto = {
   variantId: string;
   printing: string;

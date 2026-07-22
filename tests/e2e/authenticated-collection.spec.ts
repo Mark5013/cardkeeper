@@ -88,6 +88,12 @@ test.describe("authenticated collection smoke", () => {
     await page.goto("/collection");
     await expect(page.getByRole("heading", { name: "My collection" })).toBeVisible();
     await expect(page.getByText(cardName).first()).toBeVisible();
+    await expect(
+      page.getByRole("heading", { name: "Collection value history" }),
+    ).toBeVisible();
+    await expect(
+      page.getByRole("group", { name: "Collection value history range" }),
+    ).toBeVisible();
 
     await page.getByRole("searchbox", { name: "Card name" }).fill(cardName);
     await expect(page.getByText(cardName).first()).toBeVisible();

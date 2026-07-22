@@ -18,29 +18,13 @@ import {
   filterDailyPricePointsByRange,
   PRICE_HISTORY_RANGES,
   type DailyPriceHistoryPoint,
-  type PriceHistoryPoint,
   type PriceHistoryRange,
 } from "@/lib/catalog/price-history";
-
-type PriceHistorySeries = {
-  printing: string;
-  condition: string;
-  label: string;
-  points: PriceHistoryPoint[];
-};
+import type { CollectionValueHistoryDto } from "@/lib/collection/types";
 
 type ChartPoint = DailyPriceHistoryPoint & {
   dateLabel: string;
-  priceLabel: string;
-};
-
-type PriceHistorySummaryProps = {
-  latestPoint: ChartPoint;
-  recordedPointCount: number;
-  selectedSeries: PriceHistorySeries;
-  chartDayCount: number;
-  priceChangePercentage: number | null;
-  rangeLabel: string;
+  valueLabel: string;
 };
 
 const usd = new Intl.NumberFormat("en-US", {
@@ -70,7 +54,7 @@ function formatDate(value: string | number) {
   return dateFormatter.format(new Date(value));
 }
 
-function PriceTooltip({
+function CollectionValueTooltip({
   active,
   payload,
 }: {
@@ -83,93 +67,60 @@ function PriceTooltip({
 
   return (
     <div className="rounded-lg border border-[var(--line)] bg-[var(--surface)] px-3 py-2 text-sm shadow-[0_14px_32px_rgb(0_0_0_/_32%)]">
-      <p className="font-bold text-[var(--ink)]">{point.priceLabel}</p>
+      <p className="font-bold text-[var(--ink)]">{point.valueLabel}</p>
       <p className="mt-1 text-xs text-[var(--muted)]">{point.dateLabel}</p>
       <p className="mt-1 text-xs text-[var(--muted)]">
-        {point.isRecorded ? "Recorded market value" : "Carried forward from the previous change"}
+        {point.isRecorded
+          ? "Calculated from recorded market prices"
+          : "Carried forward from the previous market changes"}
       </p>
     </div>
   );
 }
 
-function PriceHistorySummary({
-  latestPoint,
-  recordedPointCount,
-  selectedSeries,
-  chartDayCount,
-  priceChangePercentage,
-  rangeLabel,
-}: PriceHistorySummaryProps) {
-  const priceChangeLabel =
-    priceChangePercentage === null
-      ? "Not available"
-      : `${priceChangePercentage > 0 ? "+" : ""}${percentage.format(priceChangePercentage)}%`;
-  const priceChangeColor =
-    priceChangePercentage === null || priceChangePercentage === 0
-      ? "text-[var(--muted)]"
-      : priceChangePercentage > 0
-        ? "text-emerald-400"
-        : "text-[var(--danger)]";
-
-  return (
-    <aside className="rounded-lg border border-[var(--line)] bg-[var(--surface)] p-3">
-      <div>
-        <p className="text-xs font-bold uppercase tracking-[0.08em] text-[var(--muted)]">Current market</p>
-        <p className="mt-1.5 text-2xl font-black text-[var(--ink)]">{latestPoint.priceLabel}</p>
-        <p className="mt-1 text-xs text-[var(--muted)]">Latest snapshot: {latestPoint.dateLabel}</p>
-      </div>
-
-      <div className="mt-4 border-t border-[var(--line)] pt-3">
-        <p className="text-xs font-bold uppercase tracking-[0.08em] text-[var(--muted)]">
-          {rangeLabel} change
-        </p>
-        <p className={`mt-1.5 text-xl font-black ${priceChangeColor}`}>{priceChangeLabel}</p>
-      </div>
-
-      <div className="mt-4 border-t border-[var(--line)] pt-3 text-xs text-[var(--muted)]">
-        <p className="truncate font-semibold text-[var(--ink)]" title={selectedSeries.label}>
-          {selectedSeries.label}
-        </p>
-        <p className="mt-1">
-          {rangeLabel} · {chartDayCount.toLocaleString()} chart {chartDayCount === 1 ? "day" : "days"}
-        </p>
-        <p className="mt-1">
-          {recordedPointCount.toLocaleString()} recorded price {recordedPointCount === 1 ? "value" : "values"}
-        </p>
-      </div>
-    </aside>
-  );
-}
-
-export function PriceHistoryChart({ series }: { series: PriceHistorySeries[] }) {
-  const [selectedRange, setSelectedRange] = useState<PriceHistoryRange>(DEFAULT_PRICE_HISTORY_RANGE);
-  const selectedSeries = getPreferredSeries(series);
+export function CollectionValueHistoryChart({
+  history,
+}: {
+  history: CollectionValueHistoryDto;
+}) {
+  const [selectedRange, setSelectedRange] =
+    useState<PriceHistoryRange>(DEFAULT_PRICE_HISTORY_RANGE);
   const points = useMemo<ChartPoint[]>(() => {
-    const dailyPoints = expandDailyPricePoints(selectedSeries?.points ?? []);
+    const dailyPoints = expandDailyPricePoints(history.points);
 
     return filterDailyPricePointsByRange(dailyPoints, selectedRange).map((point) => ({
       ...point,
       dateLabel: formatDate(point.timestamp),
-      priceLabel: usd.format(point.amountUsd),
+      valueLabel: usd.format(point.amountUsd),
     }));
-  }, [selectedRange, selectedSeries]);
+  }, [history.points, selectedRange]);
 
-  if (!selectedSeries || points.length === 0) {
+  if (points.length === 0) {
     return (
       <div className="mt-4 grid min-h-48 place-items-center rounded-lg border border-dashed border-[var(--line)] bg-[var(--surface)] p-7 text-center text-[var(--muted)]">
-        No price snapshots are available for this card yet.
+        No historical market prices are available for the cards in this collection yet.
       </div>
     );
   }
 
-  const minPrice = Math.min(...points.map((point) => point.amountUsd));
-  const maxPrice = Math.max(...points.map((point) => point.amountUsd));
-  const domainPadding = Math.max((maxPrice - minPrice) * 0.12, maxPrice * 0.08, 1);
+  const minValue = Math.min(...points.map((point) => point.amountUsd));
+  const maxValue = Math.max(...points.map((point) => point.amountUsd));
+  const domainPadding = Math.max((maxValue - minValue) * 0.12, maxValue * 0.08, 1);
   const latestPoint = points[points.length - 1];
   const selectedRangeLabel =
-    PRICE_HISTORY_RANGES.find((range) => range.value === selectedRange)?.label ?? "Price history";
-  const recordedPointCount = points.filter((point) => point.isRecorded).length;
-  const priceChangePercentage = calculatePriceChangePercentage(points);
+    PRICE_HISTORY_RANGES.find((range) => range.value === selectedRange)?.label ??
+    "Value history";
+  const valueChangePercentage = calculatePriceChangePercentage(points);
+  const valueChangeLabel =
+    valueChangePercentage === null
+      ? "Not available"
+      : `${valueChangePercentage > 0 ? "+" : ""}${percentage.format(valueChangePercentage)}%`;
+  const valueChangeColor =
+    valueChangePercentage === null || valueChangePercentage === 0
+      ? "text-[var(--muted)]"
+      : valueChangePercentage > 0
+        ? "text-emerald-400"
+        : "text-[var(--danger)]";
 
   return (
     <div className="mt-4 grid gap-4 2xl:grid-cols-[minmax(0,1fr)_14rem]">
@@ -190,23 +141,32 @@ export function PriceHistoryChart({ series }: { series: PriceHistorySeries[] }) 
                 minTickGap={24}
               />
               <YAxis
-                width={56}
+                width={64}
                 tick={{ fill: "var(--muted)", fontSize: 12 }}
                 tickFormatter={(value) => compactUsd.format(Number(value))}
                 tickLine={false}
                 axisLine={{ stroke: "var(--line)" }}
-                domain={[Math.max(0, minPrice - domainPadding), maxPrice + domainPadding]}
+                domain={[Math.max(0, minValue - domainPadding), maxValue + domainPadding]}
               />
               <Tooltip
-                content={<PriceTooltip />}
-                cursor={{ stroke: "var(--secondary)", strokeWidth: 1.5, strokeDasharray: "4 4" }}
+                content={<CollectionValueTooltip />}
+                cursor={{
+                  stroke: "var(--secondary)",
+                  strokeWidth: 1.5,
+                  strokeDasharray: "4 4",
+                }}
               />
               <Line
                 dataKey="amountUsd"
                 dot={false}
-                activeDot={{ fill: "var(--secondary-hover)", r: 6, stroke: "var(--background)", strokeWidth: 2 }}
+                activeDot={{
+                  fill: "var(--secondary-hover)",
+                  r: 6,
+                  stroke: "var(--background)",
+                  strokeWidth: 2,
+                }}
                 isAnimationActive={false}
-                name="Market price"
+                name="Collection value"
                 stroke="var(--secondary)"
                 strokeWidth={3}
                 type="monotone"
@@ -217,7 +177,7 @@ export function PriceHistoryChart({ series }: { series: PriceHistorySeries[] }) 
 
         <div className="mt-3 overflow-x-auto pb-1">
           <div
-            aria-label="Price history range"
+            aria-label="Collection value history range"
             className="mx-auto flex w-max gap-1 rounded-lg border border-[var(--line)] bg-[var(--background)] p-1"
             role="group"
           >
@@ -244,18 +204,40 @@ export function PriceHistoryChart({ series }: { series: PriceHistorySeries[] }) 
         </div>
       </div>
 
-      <PriceHistorySummary
-        latestPoint={latestPoint}
-        priceChangePercentage={priceChangePercentage}
-        recordedPointCount={recordedPointCount}
-        rangeLabel={selectedRangeLabel}
-        selectedSeries={selectedSeries}
-        chartDayCount={points.length}
-      />
+      <aside className="rounded-lg border border-[var(--line)] bg-[var(--surface)] p-3">
+        <div>
+          <p className="text-xs font-bold uppercase tracking-[0.08em] text-[var(--muted)]">
+            Current value
+          </p>
+          <p className="mt-1.5 text-2xl font-black text-[var(--ink)]">
+            {latestPoint.valueLabel}
+          </p>
+          <p className="mt-1 text-xs text-[var(--muted)]">
+            Latest snapshot: {latestPoint.dateLabel}
+          </p>
+        </div>
+
+        <div className="mt-4 border-t border-[var(--line)] pt-3">
+          <p className="text-xs font-bold uppercase tracking-[0.08em] text-[var(--muted)]">
+            {selectedRangeLabel} change
+          </p>
+          <p className={`mt-1.5 text-xl font-black ${valueChangeColor}`}>
+            {valueChangeLabel}
+          </p>
+        </div>
+
+        <div className="mt-4 border-t border-[var(--line)] pt-3 text-xs text-[var(--muted)]">
+          <p className="font-semibold text-[var(--ink)]">Current holdings</p>
+          <p className="mt-1">
+            {selectedRangeLabel} · {points.length.toLocaleString()} chart{" "}
+            {points.length === 1 ? "day" : "days"}
+          </p>
+          <p className="mt-1">
+            {history.pricedVariants.toLocaleString()} of{" "}
+            {history.totalVariants.toLocaleString()} variants valued
+          </p>
+        </div>
+      </aside>
     </div>
   );
-}
-
-function getPreferredSeries(series: PriceHistorySeries[]) {
-  return series.find((item) => item.condition === "unspecified") ?? series[0];
 }
