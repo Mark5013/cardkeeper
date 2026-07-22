@@ -45,6 +45,9 @@ try {
   const [{ count: collectionCountBefore }] = await client`
     select count(*)::int as count from public.collection_items
   `;
+  const [{ count: quantityHistoryCountBefore }] = await client`
+    select count(*)::int as count from public.collection_quantity_history
+  `;
 
   try {
     await client.begin(async (sql) => {
@@ -80,7 +83,10 @@ try {
 
       await assumeRole(sql, "authenticated", owner.user_id);
       const ownerCollection = await sql`
-        select id from public.collection_items where user_id = ${owner.user_id}
+        select id
+        from public.collection_items
+        where user_id = ${owner.user_id}
+          and card_variant_id = ${variants[0].id}
       `;
       const ownerProfile = await sql`
         select user_id from public.profiles where user_id = ${owner.user_id}
@@ -94,10 +100,26 @@ try {
       const authenticatedCatalog = await sql`
         select id from public.cards where id = ${card.id}
       `;
+      const ownerQuantityHistory = await sql`
+        select quantity
+        from public.collection_quantity_history
+        where user_id = ${owner.user_id} and card_variant_id = ${variants[0].id}
+      `;
+      const directHistoryInsertDenied = await expectDenied(sql, (savepoint) => savepoint`
+        insert into public.collection_quantity_history (
+          user_id,
+          card_variant_id,
+          effective_on,
+          quantity
+        )
+        values (${owner.user_id}, ${variants[1].id}, current_date, 1)
+      `);
 
       check("Owner can read their collection", ownerCollection.length === 1);
       check("Owner can read their profile", ownerProfile.length === 1);
       check("Owner can update their collection", ownerUpdate[0]?.quantity === 2);
+      check("Owner can read trigger-recorded quantity history", ownerQuantityHistory[0]?.quantity === 2);
+      check("Owner cannot write quantity history directly", directHistoryInsertDenied);
       check("Authenticated users can read catalog cards", authenticatedCatalog.length === 1);
 
       await assumeRole(sql, "authenticated", intruderId);
@@ -106,6 +128,11 @@ try {
       `;
       const intruderProfile = await sql`
         select user_id from public.profiles where user_id = ${owner.user_id}
+      `;
+      const intruderQuantityHistory = await sql`
+        select quantity
+        from public.collection_quantity_history
+        where user_id = ${owner.user_id}
       `;
       const intruderUpdate = await sql`
         update public.collection_items
@@ -120,6 +147,7 @@ try {
 
       check("Another user cannot read the owner's collection", intruderCollection.length === 0);
       check("Another user cannot read the owner's profile", intruderProfile.length === 0);
+      check("Another user cannot read the owner's quantity history", intruderQuantityHistory.length === 0);
       check("Another user cannot update the owner's collection", intruderUpdate.length === 0);
       check("Another user cannot insert rows for the owner", crossUserInsertDenied);
 
@@ -130,6 +158,9 @@ try {
       const anonymousCollectionDenied = await expectDenied(sql, (savepoint) => savepoint`
         select id from public.collection_items limit 1
       `);
+      const anonymousQuantityHistoryDenied = await expectDenied(sql, (savepoint) => savepoint`
+        select quantity from public.collection_quantity_history limit 1
+      `);
       const anonymousCatalogWriteDenied = await expectDenied(sql, (savepoint) => savepoint`
         insert into public.card_sets (provider_id, language_code, name)
         values (${`${fixtureKey}-forbidden`}, 'en', 'Forbidden Set')
@@ -137,6 +168,7 @@ try {
 
       check("Anonymous visitors can read catalog cards", anonymousCatalog.length === 1);
       check("Anonymous visitors cannot read collections", anonymousCollectionDenied);
+      check("Anonymous visitors cannot read quantity history", anonymousQuantityHistoryDenied);
       check("Anonymous visitors cannot modify the catalog", anonymousCatalogWriteDenied);
 
       await sql`reset role`;
@@ -154,9 +186,16 @@ try {
   const [{ count: collectionCountAfter }] = await client`
     select count(*)::int as count from public.collection_items
   `;
+  const [{ count: quantityHistoryCountAfter }] = await client`
+    select count(*)::int as count from public.collection_quantity_history
+  `;
 
   check("RLS fixtures were rolled back", fixtureCount === 0);
   check("Existing collection data was unchanged", collectionCountAfter === collectionCountBefore);
+  check(
+    "Existing quantity history was unchanged",
+    quantityHistoryCountAfter === quantityHistoryCountBefore,
+  );
 
   for (const result of checks) {
     console.log(`${result.passed ? "PASS" : "FAIL"}  ${result.name}`);

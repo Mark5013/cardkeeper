@@ -8,6 +8,7 @@ import {
   cardSets,
   cardVariants,
   collectionItems,
+  collectionQuantityHistory,
   currentPrices,
   priceSeries,
 } from "@/db/schema";
@@ -371,27 +372,33 @@ export async function getCurrentCollectionValueHistory(): Promise<CollectionValu
   if (!user) return null;
 
   try {
-    const holdings = await measureDbQuery(
-      "db.collection_value_history_holdings",
+    const quantityRows = await measureDbQuery(
+      "db.collection_value_history_quantities",
       () =>
         db
           .select({
+            cardVariantId: cardVariants.id,
             cardId: cardVariants.cardId,
             printing: cardVariants.printing,
-            quantity: collectionItems.quantity,
+            effectiveOn: collectionQuantityHistory.effectiveOn,
+            quantity: collectionQuantityHistory.quantity,
           })
-          .from(collectionItems)
-          .innerJoin(cardVariants, eq(collectionItems.cardVariantId, cardVariants.id))
-          .where(eq(collectionItems.userId, user.id)),
+          .from(collectionQuantityHistory)
+          .innerJoin(
+            cardVariants,
+            eq(collectionQuantityHistory.cardVariantId, cardVariants.id),
+          )
+          .where(eq(collectionQuantityHistory.userId, user.id))
+          .orderBy(asc(collectionQuantityHistory.effectiveOn)),
       {},
     );
 
-    if (holdings.length === 0) {
+    if (quantityRows.length === 0) {
       return { points: [], pricedVariants: 0, totalVariants: 0 };
     }
 
-    const uniqueCardIds = Array.from(new Set(holdings.map((holding) => holding.cardId)));
-    const uniquePrintings = Array.from(new Set(holdings.map((holding) => holding.printing)));
+    const uniqueCardIds = Array.from(new Set(quantityRows.map((row) => row.cardId)));
+    const uniquePrintings = Array.from(new Set(quantityRows.map((row) => row.printing)));
     const historyRows = await measureDbQuery(
       "db.collection_value_history_prices",
       () =>
@@ -431,7 +438,7 @@ export async function getCurrentCollectionValueHistory(): Promise<CollectionValu
               inArray(cardVariants.printing, uniquePrintings),
             ),
           ),
-      { holdingCount: holdings.length },
+      { quantityHistoryRowCount: quantityRows.length },
     );
     const pointsByCardPrinting = new Map<
       string,
@@ -469,29 +476,52 @@ export async function getCurrentCollectionValueHistory(): Promise<CollectionValu
       if (points.length > 0) pointsByCardPrinting.set(key, points);
     }
 
-    const quantityByCardPrinting = new Map<string, number>();
-    for (const holding of holdings) {
-      const key = `${holding.cardId}:${holding.printing}`;
-      quantityByCardPrinting.set(
-        key,
-        (quantityByCardPrinting.get(key) ?? 0) + holding.quantity,
-      );
+    const quantityChangesByVariantId = new Map<
+      string,
+      { effectiveAt: string; quantity: number }[]
+    >();
+    const identityByVariantId = new Map<string, { cardId: string; printing: string }>();
+    const currentQuantityByVariantId = new Map<string, number>();
+
+    for (const row of quantityRows) {
+      const changes = quantityChangesByVariantId.get(row.cardVariantId) ?? [];
+      changes.push({
+        effectiveAt: `${row.effectiveOn}T00:00:00.000Z`,
+        quantity: row.quantity,
+      });
+      quantityChangesByVariantId.set(row.cardVariantId, changes);
+      identityByVariantId.set(row.cardVariantId, {
+        cardId: row.cardId,
+        printing: row.printing,
+      });
+      currentQuantityByVariantId.set(row.cardVariantId, row.quantity);
     }
 
     const points = aggregateCollectionValueHistory(
-      Array.from(quantityByCardPrinting, ([key, quantity]) => ({
-        quantity,
-        points: pointsByCardPrinting.get(key) ?? [],
-      })),
+      Array.from(quantityChangesByVariantId, ([variantId, quantityChanges]) => {
+        const identity = identityByVariantId.get(variantId);
+        const priceKey = identity ? `${identity.cardId}:${identity.printing}` : "";
+
+        return {
+          quantityChanges,
+          points: pointsByCardPrinting.get(priceKey) ?? [],
+        };
+      }),
     );
-    const pricedVariants = holdings.filter((holding) =>
-      pointsByCardPrinting.has(`${holding.cardId}:${holding.printing}`),
-    ).length;
+    const currentVariantIds = Array.from(currentQuantityByVariantId)
+      .filter(([, quantity]) => quantity > 0)
+      .map(([variantId]) => variantId);
+    const pricedVariants = currentVariantIds.filter((variantId) => {
+      const identity = identityByVariantId.get(variantId);
+      return identity
+        ? pointsByCardPrinting.has(`${identity.cardId}:${identity.printing}`)
+        : false;
+    }).length;
 
     return {
       points,
       pricedVariants,
-      totalVariants: holdings.length,
+      totalVariants: currentVariantIds.length,
     };
   } catch (error) {
     logError("db.collection_value_history.failed", error);

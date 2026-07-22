@@ -168,6 +168,30 @@ export const collectionItems = pgTable(
   ],
 );
 
+export const collectionQuantityHistory = pgTable(
+  "collection_quantity_history",
+  {
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => profiles.userId, { onDelete: "cascade" }),
+    cardVariantId: uuid("card_variant_id")
+      .notNull()
+      .references(() => cardVariants.id, { onDelete: "cascade" }),
+    effectiveOn: date("effective_on").notNull(),
+    quantity: integer("quantity").notNull(),
+    recordedAt: timestamp("recorded_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (table) => [
+    primaryKey({
+      name: "collection_quantity_history_pkey",
+      columns: [table.userId, table.cardVariantId, table.effectiveOn],
+    }),
+    index("collection_quantity_history_user_date_idx").on(table.userId, table.effectiveOn),
+    index("collection_quantity_history_variant_idx").on(table.cardVariantId),
+    check("collection_quantity_history_quantity_nonnegative", sql`${table.quantity} >= 0`),
+  ],
+);
+
 export const currentPrices = pgTable(
   "current_prices",
   {

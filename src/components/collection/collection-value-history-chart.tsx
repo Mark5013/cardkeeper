@@ -71,8 +71,8 @@ function CollectionValueTooltip({
       <p className="mt-1 text-xs text-[var(--muted)]">{point.dateLabel}</p>
       <p className="mt-1 text-xs text-[var(--muted)]">
         {point.isRecorded
-          ? "Calculated from recorded market prices"
-          : "Carried forward from the previous market changes"}
+          ? "Calculated from recorded market prices and collection quantities"
+          : "Carried forward from the previous price or quantity change"}
       </p>
     </div>
   );

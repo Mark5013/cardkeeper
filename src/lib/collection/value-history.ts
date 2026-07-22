@@ -3,8 +3,13 @@ export type CollectionValueSourcePoint = {
   amountMinor: number;
 };
 
-export type CollectionValueSourceSeries = {
+export type CollectionQuantitySourcePoint = {
+  effectiveAt: string;
   quantity: number;
+};
+
+export type CollectionValueSourceSeries = {
+  quantityChanges: CollectionQuantitySourcePoint[];
   points: CollectionValueSourcePoint[];
 };
 
@@ -27,9 +32,8 @@ export function aggregateCollectionValueHistory(
   const valueChangesByDay = new Map<number, number>();
 
   for (const series of sourceSeries) {
-    if (!Number.isInteger(series.quantity) || series.quantity <= 0) continue;
-
     const latestPointByDay = new Map<number, CollectionValueSourcePoint>();
+    const latestQuantityByDay = new Map<number, CollectionQuantitySourcePoint>();
 
     for (const point of series.points) {
       const timestamp = getUtcDayTimestamp(point.observedAt);
@@ -51,21 +55,57 @@ export function aggregateCollectionValueHistory(
       }
     }
 
-    const recordedDays = Array.from(latestPointByDay.keys()).sort(
+    for (const quantityChange of series.quantityChanges) {
+      const timestamp = getUtcDayTimestamp(quantityChange.effectiveAt);
+
+      if (
+        timestamp === null ||
+        !Number.isInteger(quantityChange.quantity) ||
+        quantityChange.quantity < 0
+      ) {
+        continue;
+      }
+
+      const existingChange = latestQuantityByDay.get(timestamp);
+      if (
+        !existingChange ||
+        new Date(quantityChange.effectiveAt).getTime() >=
+          new Date(existingChange.effectiveAt).getTime()
+      ) {
+        latestQuantityByDay.set(timestamp, quantityChange);
+      }
+    }
+
+    const quantityDays = Array.from(latestQuantityByDay.keys());
+    if (quantityDays.length === 0) continue;
+
+    const firstQuantityDay = Math.min(...quantityDays);
+    const recordedDays = Array.from(
+      new Set([...latestPointByDay.keys(), ...quantityDays]),
+    ).sort(
       (first, second) => first - second,
     );
-    let previousAmountMinor = 0;
+    let currentAmountMinor = 0;
+    let currentQuantity = 0;
+    let previousValueMinor = 0;
 
     for (const timestamp of recordedDays) {
       const point = latestPointByDay.get(timestamp);
-      if (!point) continue;
+      if (point) currentAmountMinor = point.amountMinor;
 
-      const valueChangeMinor = (point.amountMinor - previousAmountMinor) * series.quantity;
+      const quantityChange = latestQuantityByDay.get(timestamp);
+      if (quantityChange) currentQuantity = quantityChange.quantity;
+
+      if (timestamp < firstQuantityDay) continue;
+
+      const nextValueMinor = currentAmountMinor * currentQuantity;
+      if (!Number.isSafeInteger(nextValueMinor)) continue;
+
       valueChangesByDay.set(
         timestamp,
-        (valueChangesByDay.get(timestamp) ?? 0) + valueChangeMinor,
+        (valueChangesByDay.get(timestamp) ?? 0) + nextValueMinor - previousValueMinor,
       );
-      previousAmountMinor = point.amountMinor;
+      previousValueMinor = nextValueMinor;
     }
   }
 

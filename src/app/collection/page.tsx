@@ -51,6 +51,8 @@ export default async function CollectionPage() {
       ]),
     ).values(),
   );
+  const hasCollectionValueHistory =
+    collection.items.length > 0 || (collectionValueHistory?.points.length ?? 0) > 0;
 
   return (
     <main className="min-h-screen overflow-x-hidden">
@@ -87,15 +89,16 @@ export default async function CollectionPage() {
           </article>
         </div>
 
-        {collection.items.length > 0 ? (
+        {hasCollectionValueHistory ? (
           <section className="mt-10" aria-labelledby="collection-value-history-heading">
             <p className="text-sm font-semibold text-[var(--accent)]">Market history</p>
             <h2 className="mt-1 text-2xl font-bold" id="collection-value-history-heading">
               Collection value history
             </h2>
             <p className="mt-2 max-w-3xl text-sm leading-6 text-[var(--muted)]">
-              Historical market value of the cards you own now. Adding or removing a card
-              recalculates the full chart.
+              Daily market value based on what was in your collection on each date. Adding,
+              removing, or changing a quantity affects that day and later dates without
+              rewriting earlier values.
             </p>
             <CollectionValueHistoryChart
               history={
