@@ -2,7 +2,7 @@ import nextEnv from "@next/env";
 import postgres from "postgres";
 
 import {
-  applyBaseSetCardOverrides,
+  applyCatalogCardOverrides,
   applyBaseSetSetOverrides,
 } from "./lib/base-set-editions.mjs";
 
@@ -520,7 +520,7 @@ async function upsertSets(sets) {
 async function upsertCards(cards) {
   if (cards.length === 0) return;
 
-  const catalogCards = cards.map(applyBaseSetCardOverrides);
+  const catalogCards = cards.map(applyCatalogCardOverrides);
 
   const setProviderIds = Array.from(new Set(catalogCards.map((card) => card.set.id)));
   const localSets = await sql`

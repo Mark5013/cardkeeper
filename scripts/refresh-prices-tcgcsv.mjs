@@ -1,7 +1,22 @@
 import nextEnv from "@next/env";
 import postgres from "postgres";
 
+import {
+  doesTcgcsvProductNameMatchCard,
+  getTcgcsvCollectorNumberEvidence,
+  isSupplementalTcgcsvGroup,
+  isReviewedPokemonFutsalProduct,
+} from "./lib/tcgcsv-group-matching.mjs";
 import { compareTcgcsvGroupsByPublishedOn } from "./lib/tcgcsv-history-core.mjs";
+import {
+  resolveTcgcsvPriceCandidates,
+  resolveTcgcsvVariantProductIds,
+} from "./lib/tcgcsv-price-mapping.mjs";
+import {
+  classifyReviewedTcgcsvQualifiedPrinting,
+  REVIEWED_TCGCSV_QUALIFIED_PRINTING_GROUPS,
+  reviewTcgcsvQualifiedPrintingRef,
+} from "./lib/tcgcsv-qualified-printing.mjs";
 
 const { loadEnvConfig } = nextEnv;
 
@@ -9,31 +24,15 @@ const TCGCSV_BASE_URL = "https://tcgcsv.com";
 const POKEMON_CATEGORY_ID = 3;
 const SOURCE = "tcgcsv";
 const CURRENCY = "USD";
-const DEFAULT_PAGE_DELAY_MS = 100;
+const DEFAULT_PAGE_DELAY_MS = 250;
+const MINIMUM_PAGE_DELAY_MS = 250;
 const DEFAULT_MAX_RETRIES = 4;
 const WRITE_BATCH_SIZE = 500;
 const USER_AGENT = process.env.TCGCSV_USER_AGENT ?? "Cardkeeper/0.1.0 (+https://github.com/Mark5013/cardkeeper)";
 const SPLIT_SET_MARKERS = ["latias", "latios", "plusle", "minun"];
-const SUPPLEMENTAL_GROUP_TERMS = [
-  "academy",
-  "blister",
-  "burger king",
-  "deck",
-  "energies",
-  "first partner",
-  "jumbo",
-  "league",
-  "mcdonald",
-  "placement",
-  "prize pack",
-  "professor",
-  "promo",
-  "promos",
-  "shadowless",
-  "trick or trade",
-  "trainer kit",
-  "world championship",
-];
+const REVIEWED_QUALIFIED_PRINTING_GROUP_IDS = new Set(
+  Object.values(REVIEWED_TCGCSV_QUALIFIED_PRINTING_GROUPS).map(String),
+);
 const SET_NAME_ALIASES = new Map(
   [
     [
@@ -65,7 +64,10 @@ const SET_NAME_ALIASES = new Map(
         "XY Black Star Promos",
       ],
     ],
-    ["Battle Academy 2024", ["Scarlet & Violet Promos"]],
+    [
+      "Battle Academy 2024",
+      ["Scarlet & Violet Black Star Promos", "Scarlet & Violet Promos"],
+    ],
     ["Best of Promos", ["Best of Game"]],
     ["Base Set", ["Base Set (Unlimited)"]],
     ["Deck Exclusives", ["Base Set (Shadowless)", "Base Set (Unlimited)"]],
@@ -78,7 +80,9 @@ const SET_NAME_ALIASES = new Map(
         "Forbidden Light",
         "Guardians Rising",
         "Lost Thunder",
+        "Roaring Skies",
         "Shining Legends",
+        "Steam Siege",
         "Team Up",
         "Ultra Prism",
         "Unbroken Bonds",
@@ -101,7 +105,9 @@ const SET_NAME_ALIASES = new Map(
     ["McDonald's Promos 2017", ["McDonald's Collection 2017"]],
     ["McDonald's Promos 2018", ["McDonald's Collection 2018"]],
     ["McDonald's Promos 2019", ["McDonald's Collection 2019"]],
+    ["McDonald's 25th Anniversary Promos", ["McDonald's Collection 2021"]],
     ["McDonald's Promos 2022", ["McDonald's Collection 2022"]],
+    ["Miscellaneous Cards & Products", ["Pokémon Futsal Collection"]],
     ["SM - Burning Shadows", ["Burning Shadows"]],
     ["SM Base Set", ["Sun & Moon"]],
     ["WoTC Promo", "Wizards Black Star Promos"],
@@ -113,8 +119,14 @@ const SET_NAME_ALIASES = new Map(
     ["SM Promos", "SM Black Star Promos"],
     ["SWSH: Sword & Shield Promo Cards", "SWSH Black Star Promos"],
     ["Sword & Shield Promo Cards", "SWSH Black Star Promos"],
-    ["SV: Scarlet & Violet Promo Cards", "Scarlet & Violet Promos"],
-    ["Scarlet & Violet Promo Cards", "Scarlet & Violet Promos"],
+    [
+      "SV: Scarlet & Violet Promo Cards",
+      ["Scarlet & Violet Black Star Promos", "Scarlet & Violet Promos"],
+    ],
+    [
+      "Scarlet & Violet Promo Cards",
+      ["Scarlet & Violet Black Star Promos", "Scarlet & Violet Promos"],
+    ],
   ].map(([groupName, setNames]) => [
     normalizeSetName(groupName),
     (Array.isArray(setNames) ? setNames : [setNames]).map((setName) => normalizeSetName(setName)),
@@ -124,11 +136,12 @@ const GROUP_SET_CARD_NUMBER_ALLOWLIST = new Map(
   [
     [
       "Battle Academy 2024",
-      "Scarlet & Violet Promos",
+      "Scarlet & Violet Black Star Promos",
       ["105", "106", "107", "108", "109", "110", "111", "112", "113", "114", "148"],
     ],
     ["Deck Exclusives", "Base Set (Shadowless)", ["8"]],
     ["Deck Exclusives", "Base Set (Unlimited)", ["8"]],
+    ["Miscellaneous Cards & Products", "Pokémon Futsal Collection", ["1", "2", "3", "4", "5"]],
   ].map(([groupName, setName, cardNumbers]) => [
     getGroupSetKey(groupName, setName),
     new Set(cardNumbers.map((cardNumber) => normalizeCardNumber(cardNumber))),
@@ -187,6 +200,12 @@ function parseArgs(args) {
     }
   }
 
+  if (parsed.pageDelayMs < MINIMUM_PAGE_DELAY_MS) {
+    throw new Error(
+      `TCGCSV requests require at least ${MINIMUM_PAGE_DELAY_MS}ms spacing.`,
+    );
+  }
+
   return parsed;
 }
 
@@ -203,6 +222,8 @@ function parsePositiveInteger(value, label) {
 async function refreshPrices() {
   const startedAt = Date.now();
   const observedAt = await getObservedAt();
+  const initiallyInvalidatedCurrentPrices =
+    await invalidateUntrustedCurrentPrices();
 
   if (options.skipIfCurrent && !options.resetSource) {
     const latestObservedAt = await getLatestCurrentPriceObservedAt();
@@ -218,6 +239,7 @@ async function refreshPrices() {
   const groups = await getGroupsToRefresh();
   const localSets = await getLocalSets();
   const setMatchers = buildLocalSetMatchers(localSets);
+  const discoveredProductIdsByVariantId = new Map();
   const stats = {
     groupsChecked: 0,
     groupsMatched: 0,
@@ -226,6 +248,9 @@ async function refreshPrices() {
     priceRowsPrepared: 0,
     currentPricesUpserted: 0,
     priceSeriesChangesAppended: 0,
+    ambiguousProductMappings: 0,
+    currentPricesInvalidated: initiallyInvalidatedCurrentPrices,
+    staleProductRefsFound: 0,
   };
 
   console.log(
@@ -245,6 +270,35 @@ async function refreshPrices() {
     const localSetsForGroup = findLocalSetsForGroup(group, setMatchers);
 
     if (localSetsForGroup.length === 0) {
+      if (options.dryRun) {
+        const productsPayload = await fetchTcgcsvJson(
+          `/tcgplayer/${POKEMON_CATEGORY_ID}/${group.groupId}/products`,
+        );
+        const cardProducts = productsPayload.results.filter(isCardProduct);
+        const reconciliation = await reconcileTcgplayerProductRefs({
+          groupId: group.groupId,
+          groupProducts: cardProducts,
+          identityMatchedProductRefs: [],
+          localSets: [],
+        });
+
+        stats.productsChecked += cardProducts.length;
+        stats.staleProductRefsFound += reconciliation.staleRefCount;
+
+        for (const issue of reconciliation.issues) {
+          console.warn(
+            `  mapping issue: product ${issue.productId} "${issue.productName}" -> ${issue.setName} ${issue.cardName} #${issue.cardNumber} (${issue.printing}); ${issue.reason}`,
+          );
+        }
+
+        console.log(
+          `Skipping ${group.name} (${group.groupId}): no local set match; audited ${cardProducts.length.toLocaleString()} card products and found ${reconciliation.staleRefCount.toLocaleString()} high-confidence stale refs.`,
+        );
+
+        if (options.pageDelayMs > 0) await sleep(options.pageDelayMs);
+        continue;
+      }
+
       console.log(`Skipping ${group.name} (${group.groupId}): no local set match.`);
       continue;
     }
@@ -257,6 +311,7 @@ async function refreshPrices() {
     const pricesByProductId = groupPricesByProductId(pricesPayload.results);
     const groupPriceRecords = [];
     const groupMatches = [];
+    const identityMatchedProductRefs = [];
 
     stats.productsChecked += cardProducts.length;
 
@@ -268,16 +323,54 @@ async function refreshPrices() {
         observedAt,
         pricesByProductId,
         requireNameMatch: localSetsForGroup.length > 1,
+        discoveredProductIdsByVariantId,
       });
 
       stats.productsMatched += setPriceRecords.productsMatched;
+      stats.ambiguousProductMappings += setPriceRecords.ambiguousProductMappings;
+      stats.currentPricesInvalidated +=
+        setPriceRecords.currentPricesInvalidated;
       groupPriceRecords.push(...setPriceRecords.priceRecords);
+      identityMatchedProductRefs.push(...setPriceRecords.identityMatchedProductRefs);
       groupMatches.push(
-        `${localSet.name}: ${setPriceRecords.productsMatched.toLocaleString()} matched, ${setPriceRecords.priceRecords.length.toLocaleString()} observations`,
+        `${localSet.name}: ${setPriceRecords.productsMatched.toLocaleString()} matched, ${setPriceRecords.priceRecords.length.toLocaleString()} observations${setPriceRecords.ambiguousProductMappings > 0 ? `, ${setPriceRecords.ambiguousProductMappings.toLocaleString()} ambiguous finish mappings skipped` : ""}`,
       );
     }
 
     stats.priceRowsPrepared += groupPriceRecords.length;
+
+    const reconciliation = await reconcileTcgplayerProductRefs({
+      groupId: group.groupId,
+      groupProducts: cardProducts,
+      identityMatchedProductRefs,
+      localSets: localSetsForGroup,
+      pricesByProductId,
+    });
+    stats.staleProductRefsFound += reconciliation.staleRefCount;
+
+    if (reconciliation.staleRefCount > 0) {
+      groupMatches.push(
+        `found ${reconciliation.staleRefCount.toLocaleString()} high-confidence stale product refs`,
+      );
+
+      for (const issue of reconciliation.issues) {
+        console.warn(
+          `  mapping issue: product ${issue.productId} "${issue.productName}" -> ${issue.setName} ${issue.cardName} #${issue.cardNumber} (${issue.printing}); ${issue.reason}`,
+        );
+      }
+
+      if (!options.dryRun) {
+        const quarantine = await quarantineStaleTcgplayerRefs(
+          reconciliation.issues,
+        );
+        stats.currentPricesInvalidated +=
+          quarantine.currentPricesInvalidated;
+
+        throw new Error(
+          `Stopped the TCGCSV refresh after quarantining ${quarantine.refsQuarantined.toLocaleString()} high-confidence stale product refs. Run the mapping audit and prepare a reviewed repair before refreshing again.`,
+        );
+      }
+    }
 
     if (!options.dryRun && groupPriceRecords.length > 0) {
       const writeStats = await writePrices(groupPriceRecords);
@@ -296,8 +389,14 @@ async function refreshPrices() {
 
   const elapsedSeconds = ((Date.now() - startedAt) / 1000).toFixed(1);
   console.log(
-    `TCGCSV price refresh complete in ${elapsedSeconds}s. ${stats.groupsMatched}/${stats.groupsChecked} groups matched, ${stats.productsMatched}/${stats.productsChecked} products matched, ${stats.priceRowsPrepared.toLocaleString()} observations prepared, ${stats.currentPricesUpserted.toLocaleString()} current prices upserted, ${stats.priceSeriesChangesAppended.toLocaleString()} compressed history changes appended.`,
+    `TCGCSV price refresh complete in ${elapsedSeconds}s. ${stats.groupsMatched}/${stats.groupsChecked} groups matched, ${stats.productsMatched}/${stats.productsChecked} products matched, ${stats.priceRowsPrepared.toLocaleString()} observations prepared, ${stats.ambiguousProductMappings.toLocaleString()} ambiguous finish mappings skipped, ${stats.currentPricesInvalidated.toLocaleString()} ambiguous current prices invalidated, ${stats.currentPricesUpserted.toLocaleString()} current prices upserted, ${stats.priceSeriesChangesAppended.toLocaleString()} compressed history changes appended, ${stats.staleProductRefsFound.toLocaleString()} high-confidence stale product refs found.`,
   );
+
+  if (options.dryRun && stats.staleProductRefsFound > 0) {
+    throw new Error(
+      `TCGCSV mapping audit found ${stats.staleProductRefsFound.toLocaleString()} high-confidence stale product refs.`,
+    );
+  }
 }
 
 async function preparePriceRecordsForSet({
@@ -307,19 +406,14 @@ async function preparePriceRecordsForSet({
   observedAt,
   pricesByProductId,
   requireNameMatch,
+  discoveredProductIdsByVariantId,
 }) {
   const localCards = await getLocalCardsForSet(localSet.id);
   const allowedCardNumbers = getAllowedCardNumbers(group, localSet);
-  const duplicateCardNumbers = getDuplicateCardNumbers(localCards);
-  const shouldRequireNameMatch = requireNameMatch || duplicateCardNumbers.size > 0;
-  const localCardsByNumber = new Map(
-    localCards.map((card) => [normalizeCardNumberForSet(card.number, localSet), card]),
-  );
-  const localCardsByNumberAndName = new Map(
-    localCards.map((card) => [getCardNumberAndNameKey(card.number, card.name, localSet), card]),
-  );
+  const localCardsByNumber = groupLocalCardsByNumber(localCards, localSet);
   const amountsByCardPrinting = new Map();
   const priceRecords = [];
+  const identityMatchedProductRefs = [];
   let productsMatched = 0;
 
   for (const product of cardProducts) {
@@ -328,46 +422,164 @@ async function preparePriceRecordsForSet({
     const cardNumber = getProductCardNumber(product, localSet);
     if (allowedCardNumbers && !allowedCardNumbers.has(normalizeCardNumber(cardNumber))) continue;
 
-    const localCard = cardNumber
-      ? shouldRequireNameMatch
-        ? getNameMatchedLocalCard(product, cardNumber, localSet, localCardsByNumberAndName)
-        : localCardsByNumber.get(normalizeCardNumberForSet(cardNumber, localSet))
-      : null;
+    if (requireNameMatch) {
+      const collectorEvidence = getTcgcsvCollectorNumberEvidence({
+        productName: product.name,
+        productNumber: cardNumber,
+      });
+      const printedTotal = Number(
+        localSet.printed_total ?? localSet.total,
+      );
+
+      if (
+        collectorEvidence.hasConflict ||
+        (collectorEvidence.denominator === null
+          ? !allowedCardNumbers
+          : !Number.isInteger(printedTotal) ||
+            collectorEvidence.denominator !== printedTotal)
+      ) {
+        continue;
+      }
+    }
+
+    const normalizedCardNumber = normalizeCardNumberForSet(cardNumber, localSet);
+    const cardCandidates = cardNumber
+      ? localCardsByNumber.get(normalizedCardNumber) ?? []
+      : [];
+    const localCard = getNameMatchedLocalCard(
+      product,
+      localSet,
+      cardCandidates,
+    );
     const productPrices = pricesByProductId.get(product.productId) ?? [];
 
-    if (!localCard || productPrices.length === 0) continue;
+    if (!localCard) continue;
+
+    identityMatchedProductRefs.push({
+      cardId: String(localCard.id),
+      productId: String(product.productId),
+    });
+
+    if (productPrices.length === 0) continue;
 
     productsMatched += 1;
 
     for (const price of productPrices) {
-      const printing = normalizePrinting(price.subTypeName);
       const amountRecords = getAmountRecords(price);
+      const subTypeName = String(price.subTypeName ?? "").trim();
+      const normalizedSubtype = normalizePrinting(subTypeName);
+      const qualifiedPrinting =
+        classifyReviewedTcgcsvQualifiedPrinting({
+          groupId: group.groupId,
+          productName: product.name,
+        });
 
-      if (amountRecords.length === 0) continue;
+      if (!subTypeName && amountRecords.length === 0) continue;
+
+      if (
+        REVIEWED_QUALIFIED_PRINTING_GROUP_IDS.has(
+          String(group.groupId),
+        ) &&
+        qualifiedPrinting.status === "unsupported"
+      ) {
+        throw new Error(
+          `Unsupported physical-printing qualifier for TCGCSV group ${group.groupId}, product ${product.productId} "${product.name ?? ""}".`,
+        );
+      }
+
+      if (
+        qualifiedPrinting.status === "qualified" &&
+        normalizedSubtype !== "holofoil"
+      ) {
+        throw new Error(
+          `Expected qualified TCGCSV product ${product.productId} "${product.name ?? ""}" to use Holofoil, received "${subTypeName}".`,
+        );
+      }
 
       mergeAmountRecordsByCardPrinting(amountsByCardPrinting, {
         cardId: localCard.id,
-        printing,
+        printing:
+          qualifiedPrinting.status === "qualified"
+            ? qualifiedPrinting.printing
+            : normalizedSubtype,
         amountRecords,
         productIds: [String(product.productId)],
+        productMetadata: {
+          tcgcsvGroupId: group.groupId,
+          tcgcsvProductName: String(product.name ?? ""),
+          tcgcsvProductQualifier:
+            qualifiedPrinting.status === "qualified"
+              ? qualifiedPrinting.qualifier
+              : null,
+          tcgcsvSubTypeName: subTypeName,
+        },
       });
     }
   }
 
+  const mappingInputs = Array.from(amountsByCardPrinting.values());
   const variantIdsByCardPrinting = await getVariantIdsByCardPrinting(
-    Array.from(amountsByCardPrinting.values()),
+    mappingInputs,
     options.dryRun,
   );
+  const existingProductIdsByVariantId =
+    await getTcgplayerProductIdsByVariantId(variantIdsByCardPrinting);
+  const trustedVariantIdsByCardPrinting = new Map();
+  const ambiguousVariantIds = new Set();
+  let ambiguousProductMappings = 0;
 
   if (!options.dryRun) {
-    await writeTcgplayerProductRefs(Array.from(amountsByCardPrinting.values()), variantIdsByCardPrinting);
+    await writeTcgplayerProductRefs(
+      mappingInputs,
+      variantIdsByCardPrinting,
+    );
   }
 
-  for (const priceInput of amountsByCardPrinting.values()) {
+  for (const priceInput of mappingInputs) {
+    const key = getCardPrintingKey(
+      priceInput.cardId,
+      priceInput.printing,
+    );
     const variantIds =
-      variantIdsByCardPrinting.get(getCardPrintingKey(priceInput.cardId, priceInput.printing)) ?? [];
+      variantIdsByCardPrinting.get(key) ?? [];
+    let inputIsAmbiguous = priceInput.ambiguous;
 
     for (const cardVariantId of variantIds) {
+      const variantId = String(cardVariantId);
+      const productIdentity = resolveTcgcsvVariantProductIds({
+        candidateProductIds: priceInput.productIds,
+        existingProductIds: [
+          ...(existingProductIdsByVariantId.get(variantId) ?? []),
+          ...(discoveredProductIdsByVariantId.get(variantId) ?? []),
+        ],
+      });
+      discoveredProductIdsByVariantId.set(
+        variantId,
+        new Set(productIdentity.productIds),
+      );
+
+      if (productIdentity.ambiguous) {
+        inputIsAmbiguous = true;
+        if (!variantId.startsWith("dry-run:")) {
+          ambiguousVariantIds.add(variantId);
+        }
+        continue;
+      }
+
+      const trustedVariantIds =
+        trustedVariantIdsByCardPrinting.get(key) ?? [];
+      trustedVariantIds.push(cardVariantId);
+      trustedVariantIdsByCardPrinting.set(key, trustedVariantIds);
+    }
+
+    if (inputIsAmbiguous) {
+      ambiguousProductMappings += 1;
+      trustedVariantIdsByCardPrinting.delete(key);
+      continue;
+    }
+
+    for (const cardVariantId of
+      trustedVariantIdsByCardPrinting.get(key) ?? []) {
       for (const amountRecord of priceInput.amountRecords) {
         priceRecords.push({
           card_variant_id: cardVariantId,
@@ -380,8 +592,17 @@ async function preparePriceRecordsForSet({
       }
     }
   }
+  const currentPricesInvalidated = options.dryRun
+    ? 0
+    : await deleteTcgcsvCurrentPricesForVariantIds(ambiguousVariantIds);
 
-  return { priceRecords, productsMatched };
+  return {
+    ambiguousProductMappings,
+    currentPricesInvalidated,
+    identityMatchedProductRefs,
+    priceRecords,
+    productsMatched,
+  };
 }
 
 function getProductCardNumber(product, localSet) {
@@ -423,6 +644,16 @@ function shouldSkipProductForSet(product, group, localSet) {
   const cardNumber = normalizeCardNumber(getExtendedDataValue(product, "Number"));
 
   if (
+    groupName === normalizeSetName("Miscellaneous Cards & Products") &&
+    localSetName === normalizeSetName("Pokémon Futsal Collection")
+  ) {
+    return !isReviewedPokemonFutsalProduct({
+      productName: product.name,
+      productNumber: getExtendedDataValue(product, "Number"),
+    });
+  }
+
+  if (
     groupName === normalizeSetName("Alternate Art Promos") &&
     localSetName === normalizeSetName("Team Up") &&
     productName.includes("communication") &&
@@ -462,96 +693,36 @@ function shouldSkipProductForSet(product, group, localSet) {
 function mergeAmountRecordsByCardPrinting(amountsByCardPrinting, priceInput) {
   const key = getCardPrintingKey(priceInput.cardId, priceInput.printing);
   const existingInput = amountsByCardPrinting.get(key);
-
-  if (!existingInput) {
-    amountsByCardPrinting.set(key, {
-      ...priceInput,
-      samples: 1,
-    });
-    return;
-  }
+  const candidates = [
+    ...(existingInput?.candidates ?? []),
+    ...priceInput.productIds.map((productId) => ({
+      amountRecords: priceInput.amountRecords,
+      metadata: priceInput.productMetadata,
+      productId,
+    })),
+  ];
+  const resolved = resolveTcgcsvPriceCandidates(candidates);
 
   amountsByCardPrinting.set(key, {
     cardId: priceInput.cardId,
     printing: priceInput.printing,
-    amountRecords: averageAmountRecords(existingInput.amountRecords, priceInput.amountRecords, existingInput.samples),
-    productIds: uniqueStrings([...existingInput.productIds, ...priceInput.productIds]),
-    samples: existingInput.samples + 1,
+    candidates,
+    ...resolved,
   });
 }
 
-function averageAmountRecords(existingAmountRecords, nextAmountRecords, existingSamples) {
-  const amountRecordsByType = new Map(existingAmountRecords.map((record) => [record.priceType, record]));
-
-  for (const nextRecord of nextAmountRecords) {
-    const existingRecord = amountRecordsByType.get(nextRecord.priceType);
-
-    amountRecordsByType.set(nextRecord.priceType, {
-      priceType: nextRecord.priceType,
-      amountMinor: existingRecord
-        ? Math.round((existingRecord.amountMinor * existingSamples + nextRecord.amountMinor) / (existingSamples + 1))
-        : nextRecord.amountMinor,
-    });
-  }
-
-  return Array.from(amountRecordsByType.values());
-}
-
-function getNameMatchedLocalCard(product, cardNumber, localSet, localCardsByNumberAndName) {
+function getNameMatchedLocalCard(product, localSet, localCards) {
   if (hasOtherSplitSetMarker(product.name, localSet.name)) return null;
 
-  for (const productName of getProductNameCandidates(product, cardNumber, localSet)) {
-    const localCard = localCardsByNumberAndName.get(getCardNumberAndNameKey(cardNumber, productName, localSet));
-
-    if (localCard) return localCard;
-  }
-
-  return null;
-}
-
-function getProductNameCandidates(product, cardNumber, localSet) {
-  return uniqueStrings(
-    [product.name, product.cleanName].flatMap((productName) => [
-      productName,
-      stripSunMoonUnnumberedEnergySuffix(productName, localSet),
-      stripTrailingCardNumber(productName, cardNumber, localSet),
-    ]),
+  const matches = localCards.filter((card) =>
+    doesTcgcsvProductNameMatchCard({
+      cardName: card.name,
+      productCleanName: product.cleanName,
+      productName: product.name,
+    }),
   );
-}
 
-function stripSunMoonUnnumberedEnergySuffix(value, localSet) {
-  if (localSet.provider_id !== "sm1") return "";
-
-  return normalizeCardName(value).replace(/\s+2017\s+unnumbered$/, "").trim();
-}
-
-function stripTrailingCardNumber(value, cardNumber, localSet) {
-  const normalizedName = normalizeCardName(value);
-  const normalizedNumbers = getCardNumberTextCandidates(cardNumber, localSet);
-
-  return normalizedNumbers.reduce((currentName, normalizedNumber) => {
-    if (!normalizedNumber) return currentName;
-
-    const numberPattern = escapeRegExp(normalizedNumber);
-
-    return currentName
-      .replace(new RegExp(`\\s+${numberPattern}(?:\\s+\\d+)?(?:\\s+.*)?$`), "")
-      .trim();
-  }, normalizedName);
-}
-
-function getCardNumberTextCandidates(cardNumber, localSet) {
-  const rawNumber = String(cardNumber ?? "").split("/")[0].toLowerCase().trim();
-
-  return uniqueStrings([normalizeCardNumber(cardNumber), normalizeCardNumberForSet(cardNumber, localSet), rawNumber]);
-}
-
-function uniqueStrings(values) {
-  return [...new Set(values.filter((value) => typeof value === "string" && value.trim().length > 0))];
-}
-
-function escapeRegExp(value) {
-  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  return matches.length === 1 ? matches[0] : null;
 }
 
 function hasOtherSplitSetMarker(productName, localSetName) {
@@ -633,7 +804,7 @@ async function getGroupsToRefresh() {
 
 async function getLocalSets() {
   return sql`
-    select id, provider_id, name, release_date
+    select id, provider_id, name, release_date, printed_total, total
     from card_sets
     where language_code = 'en'
   `;
@@ -675,7 +846,13 @@ async function getVariantIdsByCardPrinting(priceInputs, dryRun) {
     for (const input of priceInputs) {
       const key = getCardPrintingKey(input.cardId, input.printing);
       const variantIds = variantIdsByCardPrinting.get(key) ?? new Set();
-      variantIds.add(`dry-run:${input.cardId}:${input.printing}:unspecified`);
+
+      if (variantIds.size === 0) {
+        variantIds.add(
+          `dry-run:${input.cardId}:${input.printing}:unspecified`,
+        );
+      }
+
       variantIdsByCardPrinting.set(key, variantIds);
     }
 
@@ -716,6 +893,169 @@ async function getVariantIdsByCardPrinting(priceInputs, dryRun) {
   return mapSetsToArrays(variantIdsByCardPrinting);
 }
 
+async function getTcgplayerProductIdsByVariantId(
+  variantIdsByCardPrinting,
+) {
+  const variantIds = [
+    ...new Set(
+      Array.from(variantIdsByCardPrinting.values())
+        .flat()
+        .map(String)
+        .filter((variantId) => !variantId.startsWith("dry-run:")),
+    ),
+  ];
+  const productIdsByVariantId = new Map();
+
+  if (variantIds.length === 0) return productIdsByVariantId;
+
+  const rows = await sql`
+    select card_variant_id, ref_value, metadata
+    from card_variant_external_refs
+    where card_variant_id in ${sql(variantIds)}
+      and source = 'tcgplayer'
+      and ref_type = 'product_id'
+  `;
+
+  for (const row of rows) {
+    const variantId = String(row.card_variant_id);
+    const productIds =
+      productIdsByVariantId.get(variantId) ?? new Set();
+    productIds.add(String(row.ref_value));
+
+    if (row.metadata?.tcgcsvMappingStatus === "stale") {
+      productIds.add(`stale-ref:${row.ref_value}`);
+    }
+
+    productIdsByVariantId.set(variantId, productIds);
+  }
+
+  return productIdsByVariantId;
+}
+
+async function invalidateUntrustedCurrentPrices() {
+  const untrustedPriceFilter = sql`
+    prices.source = ${SOURCE}
+    and (
+      (
+        select count(distinct refs.ref_value)
+        from card_variant_external_refs as refs
+        where refs.card_variant_id = prices.card_variant_id
+          and refs.source = 'tcgplayer'
+          and refs.ref_type = 'product_id'
+          and refs.ref_value ~ '^[1-9][0-9]{0,14}$'
+          and coalesce(
+            refs.metadata ->> 'tcgcsvMappingStatus',
+            ''
+          ) <> 'stale'
+      ) <> 1
+      or exists (
+        select 1
+        from card_variant_external_refs as invalid_ref
+        where invalid_ref.card_variant_id = prices.card_variant_id
+          and invalid_ref.source = 'tcgplayer'
+          and invalid_ref.ref_type = 'product_id'
+          and (
+            invalid_ref.ref_value !~ '^[1-9][0-9]{0,14}$'
+            or invalid_ref.metadata ->> 'tcgcsvMappingStatus' = 'stale'
+          )
+      )
+    )
+  `;
+  const count = options.dryRun
+    ? Number(
+        (
+          await sql`
+            select count(*)::integer as count
+            from current_prices as prices
+            where ${untrustedPriceFilter}
+          `
+        )[0]?.count ?? 0,
+      )
+    : (
+        await sql`
+          delete from current_prices as prices
+          where ${untrustedPriceFilter}
+          returning id
+        `
+      ).length;
+
+  if (count > 0) {
+    console.log(
+      `${options.dryRun ? "Dry run: would invalidate" : "Invalidated"} ${count.toLocaleString()} TCGCSV current-price rows without exactly one valid TCGplayer product ref.`,
+    );
+  }
+
+  return count;
+}
+
+async function deleteTcgcsvCurrentPricesForVariantIds(variantIds) {
+  if (variantIds.size === 0) return 0;
+
+  const rows = await sql`
+    delete from current_prices
+    where source = ${SOURCE}
+      and card_variant_id in ${sql([...variantIds])}
+    returning id
+  `;
+
+  return rows.length;
+}
+
+async function quarantineStaleTcgplayerRefs(issues) {
+  const issuesByRefId = new Map(
+    issues.map((issue) => [String(issue.refId), issue]),
+  );
+  const variantIds = new Set(
+    issues.map((issue) => String(issue.cardVariantId)),
+  );
+  const quarantinedAt = new Date().toISOString();
+
+  return sql.begin(async (transaction) => {
+    let refsQuarantined = 0;
+
+    for (const [refId, issue] of issuesByRefId) {
+      const rows = await transaction`
+        update card_variant_external_refs
+        set
+          metadata =
+            coalesce(metadata, '{}'::jsonb) ||
+            jsonb_build_object(
+              'tcgcsvMappingStatus',
+              'stale',
+              'tcgcsvMappingReason',
+              ${issue.reason},
+              'tcgcsvMappingQuarantinedAt',
+              ${quarantinedAt}
+            ),
+          updated_at = now()
+        where id = ${refId}
+          and source = 'tcgplayer'
+          and ref_type = 'product_id'
+        returning id
+      `;
+      refsQuarantined += rows.length;
+    }
+
+    if (refsQuarantined !== issuesByRefId.size) {
+      throw new Error(
+        `Expected to quarantine ${issuesByRefId.size} stale refs, updated ${refsQuarantined}.`,
+      );
+    }
+
+    const deletedCurrentPrices = await transaction`
+      delete from current_prices
+      where source = ${SOURCE}
+        and card_variant_id in ${transaction([...variantIds])}
+      returning id
+    `;
+
+    return {
+      currentPricesInvalidated: deletedCurrentPrices.length,
+      refsQuarantined,
+    };
+  });
+}
+
 async function writePrices(priceRecords) {
   let currentPricesUpserted = 0;
   let priceSeriesChangesAppended = 0;
@@ -751,14 +1091,23 @@ async function writePrices(priceRecords) {
 async function writeTcgplayerProductRefs(priceInputs, variantIdsByCardPrinting) {
   const rows = priceInputs.flatMap((input) => {
     const variantIds = variantIdsByCardPrinting.get(getCardPrintingKey(input.cardId, input.printing)) ?? [];
+    const productRefs = new Map(
+      input.candidates.map((candidate) => [
+        candidate.productId,
+        candidate,
+      ]),
+    );
 
     return variantIds.flatMap((cardVariantId) =>
-      input.productIds.map((productId) => ({
+      [...productRefs.values()].map((productRef) => ({
         card_variant_id: cardVariantId,
         source: "tcgplayer",
         ref_type: "product_id",
-        ref_value: productId,
-        metadata: { url: `https://www.tcgplayer.com/product/${productId}/-?Language=English` },
+        ref_value: productRef.productId,
+        metadata: {
+          ...productRef.metadata,
+          url: `https://www.tcgplayer.com/product/${productRef.productId}/-?Language=English`,
+        },
         updated_at: new Date(),
       })),
     );
@@ -776,10 +1125,157 @@ async function writeTcgplayerProductRefs(priceInputs, variantIdsByCardPrinting) 
         "updated_at",
       )}
       on conflict (card_variant_id, source, ref_type, ref_value) do update set
-        metadata = excluded.metadata,
+        metadata =
+          coalesce(card_variant_external_refs.metadata, '{}'::jsonb) ||
+          excluded.metadata,
         updated_at = excluded.updated_at
     `;
   }
+}
+
+async function reconcileTcgplayerProductRefs({
+  groupId,
+  groupProducts,
+  identityMatchedProductRefs,
+  localSets,
+  pricesByProductId = new Map(),
+}) {
+  const groupProductIds = groupProducts.map((product) =>
+    String(product.productId),
+  );
+
+  if (groupProductIds.length === 0) {
+    return {
+      issues: [],
+      staleRefCount: 0,
+    };
+  }
+
+  const expectedCardIdsByProductId = new Map();
+  for (const mapping of identityMatchedProductRefs) {
+    const cardIds =
+      expectedCardIdsByProductId.get(mapping.productId) ?? new Set();
+    cardIds.add(mapping.cardId);
+    expectedCardIdsByProductId.set(mapping.productId, cardIds);
+  }
+  const productsById = new Map(
+    groupProducts.map((product) => [String(product.productId), product]),
+  );
+  const existingRefs = await sql`
+    select
+      external_ref.id,
+      external_ref.card_variant_id,
+      external_ref.ref_value,
+      variant.printing,
+      card.id as card_id,
+      card.name as card_name,
+      card.number as card_number,
+      card_set.name as set_name,
+      card_set.provider_id as set_provider_id,
+      card_set.printed_total,
+      card_set.total
+    from card_variant_external_refs as external_ref
+    inner join card_variants as variant on variant.id = external_ref.card_variant_id
+    inner join cards as card on card.id = variant.card_id
+    inner join card_sets as card_set on card_set.id = card.set_id
+    where external_ref.source = 'tcgplayer'
+      and external_ref.ref_type = 'product_id'
+      and external_ref.ref_value in ${sql(groupProductIds)}
+  `;
+  const issues = existingRefs.flatMap((ref) => {
+    const productId = String(ref.ref_value);
+    const product = productsById.get(productId);
+
+    if (!product) return [];
+
+    const productNumber = getExtendedDataValue(product, "Number");
+    const productPrintings = new Set(
+      (
+        pricesByProductId.get(product.productId) ??
+        pricesByProductId.get(productId) ??
+        []
+      ).map((price) => normalizePrinting(price.subTypeName)),
+    );
+    const qualifiedPrintingReview =
+      reviewTcgcsvQualifiedPrintingRef({
+        groupId,
+        normalizedSubtypes: [...productPrintings],
+        printing: ref.printing,
+        productName: product.name,
+      });
+    const nameMatches = doesTcgcsvProductNameMatchCard({
+      cardName: ref.card_name,
+      productCleanName: product.cleanName,
+      productName: product.name,
+    });
+    let reason = null;
+
+    if (!nameMatches) {
+      reason = "product name identifies a different card";
+    } else if (
+      productNumber &&
+      normalizeCardNumberForSet(productNumber, {
+        provider_id: ref.set_provider_id,
+      }) !==
+        normalizeCardNumberForSet(ref.card_number, {
+          provider_id: ref.set_provider_id,
+        })
+    ) {
+      reason = "collector number identifies a different card";
+    } else if (qualifiedPrintingReview.reason) {
+      reason = qualifiedPrintingReview.reason;
+    } else if (
+      qualifiedPrintingReview.classification.status !== "qualified" &&
+      productPrintings.size > 1 &&
+      !productPrintings.has(ref.printing)
+    ) {
+      reason = "product prices identify a different finish";
+    } else if (localSets.length > 1) {
+      const evidence = getTcgcsvCollectorNumberEvidence({
+        productName: product.name,
+        productNumber,
+      });
+      const setPrintedTotal = Number(ref.printed_total ?? ref.total);
+
+      if (
+        !evidence.hasConflict &&
+        evidence.denominator !== null &&
+        Number.isInteger(setPrintedTotal) &&
+        evidence.denominator !== setPrintedTotal
+      ) {
+        reason = `collector denominator ${evidence.denominator} does not match set printed total ${setPrintedTotal}`;
+      }
+    }
+
+    const expectedCardIds = expectedCardIdsByProductId.get(productId);
+    if (
+      !reason &&
+      expectedCardIds?.size === 1 &&
+      !expectedCardIds.has(String(ref.card_id))
+    ) {
+      reason = "the unique identity match points to a different local card";
+    }
+
+    return reason
+      ? [
+          {
+            cardName: ref.card_name,
+            cardNumber: ref.card_number,
+            cardVariantId: String(ref.card_variant_id),
+            printing: ref.printing,
+            productId,
+            productName: String(product.name ?? ""),
+            reason,
+            refId: String(ref.id),
+            setName: ref.set_name,
+          },
+        ]
+      : [];
+  });
+  return {
+    issues,
+    staleRefCount: issues.length,
+  };
 }
 
 async function filterChangedCurrentPriceRows(rows) {
@@ -941,13 +1437,12 @@ function normalizeSetName(value) {
     .replace(/\bpokemon\b/g, "")
     .replace(/\bsv\d+\b|\bme\d+\b|\bswsh\d+\b|\bsm\d+\b|\bxy\d+\b/g, "")
     .replace(/[^a-z0-9]+/g, " ")
-    .trim();
+    .trim()
+    .replace(/^ex\s+/, "");
 }
 
 function isSupplementalGroupName(value) {
-  const normalizedValue = normalizeSetName(value);
-
-  return SUPPLEMENTAL_GROUP_TERMS.some((term) => normalizedValue.includes(term));
+  return isSupplementalTcgcsvGroup(value);
 }
 
 function isCardProduct(product) {
@@ -999,10 +1494,6 @@ function normalizeCardNumber(value) {
     .trim();
 }
 
-function getCardNumberAndNameKey(number, name, localSet = null) {
-  return `${normalizeCardNumberForSet(number, localSet)}:${normalizeCardName(name)}`;
-}
-
 function normalizeCardNumberForSet(value, localSet) {
   const normalizedNumber = normalizeCardNumber(value);
 
@@ -1017,15 +1508,17 @@ function normalizeCardNumberForSet(value, localSet) {
   return normalizedNumber;
 }
 
-function getDuplicateCardNumbers(cards) {
-  const countsByNumber = new Map();
+function groupLocalCardsByNumber(localCards, localSet) {
+  const cardsByNumber = new Map();
 
-  for (const card of cards) {
-    const number = normalizeCardNumber(card.number);
-    countsByNumber.set(number, (countsByNumber.get(number) ?? 0) + 1);
+  for (const card of localCards) {
+    const cardNumber = normalizeCardNumberForSet(card.number, localSet);
+    const candidates = cardsByNumber.get(cardNumber) ?? [];
+    candidates.push(card);
+    cardsByNumber.set(cardNumber, candidates);
   }
 
-  return new Set([...countsByNumber].filter(([, count]) => count > 1).map(([number]) => number));
+  return cardsByNumber;
 }
 
 function normalizeCardName(value) {

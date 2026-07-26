@@ -21,6 +21,15 @@ export function formatPrinting(value: string) {
 
 export function formatCardPrinting(value: string, providerSetId?: string) {
   const normalizedValue = normalizePrinting(value);
+  const qualifiedLabels: Record<string, string> = {
+    holiday_calendar_holofoil: "Holiday Calendar Holofoil",
+    master_ball_holofoil: "Master Ball Pattern",
+    poke_ball_holofoil: "Poké Ball Pattern",
+  };
+
+  if (qualifiedLabels[normalizedValue]) {
+    return qualifiedLabels[normalizedValue];
+  }
 
   if (providerSetId === "base1") {
     const shadowlessLabels: Record<string, string> = {

@@ -5,6 +5,7 @@ import {
   calculatePriceChangePercentage,
   expandDailyPricePoints,
   filterDailyPricePointsByRange,
+  selectPriceHistorySeries,
 } from "../../src/lib/catalog/price-history.ts";
 
 test("calculates range change from the first and latest displayed prices", () => {
@@ -114,4 +115,16 @@ test("returns the complete expanded history for the maximum range", () => {
   ]);
 
   assert.equal(filterDailyPricePointsByRange(points, "max"), points);
+});
+
+test("selects price history for the requested printing", () => {
+  const series = [
+    { printing: "holofoil", condition: "unspecified", id: "holo" },
+    { printing: "normal", condition: "near_mint", id: "normal-nm" },
+    { printing: "normal", condition: "unspecified", id: "normal-market" },
+  ];
+
+  assert.equal(selectPriceHistorySeries(series, "normal")?.id, "normal-market");
+  assert.equal(selectPriceHistorySeries(series, "holofoil")?.id, "holo");
+  assert.equal(selectPriceHistorySeries(series, "reverse_holofoil"), undefined);
 });

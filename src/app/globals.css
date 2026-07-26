@@ -177,14 +177,6 @@ select {
   opacity: 0.65;
 }
 
-.status-card {
-  min-height: 8.5rem;
-  border: 1px solid var(--line);
-  border-radius: 0.75rem;
-  background: rgb(17 21 18 / 72%);
-  padding: 1.25rem;
-}
-
 .card-result {
   display: grid;
   grid-template-columns: 4.5rem minmax(0, 1fr);

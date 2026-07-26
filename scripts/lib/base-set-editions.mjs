@@ -4,6 +4,8 @@ export const BASE_SET_UNLIMITED_PROVIDER_ID = "base1-unlimited";
 export const BASE_SET_UNLIMITED_NAME = "Base Set (Unlimited)";
 export const BASE_SET_TCGCSV_GROUP_ID = 604;
 export const BASE_SET_SHADOWLESS_TCGCSV_GROUP_ID = 1663;
+export const BLACK_BOLT_ANTIQUE_COVER_FOSSIL_PROVIDER_ID =
+  "zsv10pt5-80";
 
 const SHADOWLESS_SUFFIX = " (Shadowless)";
 const BASE_SET_PRODUCT_NAME_ALIASES = new Map([
@@ -48,6 +50,22 @@ export function applyBaseSetCardOverrides(card) {
   };
   delete nextCard.tcgplayer;
   return nextCard;
+}
+
+export function applyCatalogCardOverrides(card) {
+  const baseSetCard = applyBaseSetCardOverrides(card);
+
+  if (
+    baseSetCard?.id !==
+    BLACK_BOLT_ANTIQUE_COVER_FOSSIL_PROVIDER_ID
+  ) {
+    return baseSetCard;
+  }
+
+  return {
+    ...baseSetCard,
+    number: "80",
+  };
 }
 
 export function createUnlimitedProviderCard({ shadowlessCard, product }) {

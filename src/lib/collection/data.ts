@@ -15,8 +15,8 @@ import {
 import { getCurrentUser } from "@/lib/supabase/auth";
 import { createClient } from "@/lib/supabase/server";
 import { logError, measureDbQuery } from "@/lib/observability";
-import { getCardPrintingOptions } from "@/lib/pokemon-tcg/printing";
-import type { PokemonTcgCard } from "@/lib/pokemon-tcg/types";
+import { isTrustedTcgcsvHistoryDay } from "@/lib/catalog/tcgcsv-history-trust";
+import { hasOneValidTcgplayerProductRef } from "@/lib/catalog/tcgplayer-ref-sql";
 
 import type { CollectionSummaryDto, CollectionValueHistoryDto } from "./types";
 import type { OwnedCardVariantDto } from "./types";
@@ -243,12 +243,7 @@ export async function getCurrentCollection(
     rows.map(({ variant }) => variant),
   );
   const allItems = rows.map(({ item, variant, card, set }) => {
-    const providerCard = card.providerData as unknown as PokemonTcgCard | null;
-    const price = providerCard
-      ? getCardPrintingOptions(providerCard).find((option) => option.value === variant.printing)?.price
-      : null;
-    const unitPriceUsd =
-      currentMarketPrices.get(variant.id) ?? price?.market ?? price?.mid ?? price?.low ?? null;
+    const unitPriceUsd = currentMarketPrices.get(variant.id) ?? null;
     const estimatedValueUsd =
       unitPriceUsd === null ? null : (Math.round(unitPriceUsd * 100) * item.quantity) / 100;
 
@@ -347,6 +342,7 @@ async function getCurrentMarketPricesByVariantId(variants: (typeof cardVariants.
             eq(cardVariants.languageCode, "en"),
             inArray(cardVariants.cardId, uniqueCardIds),
             inArray(cardVariants.printing, uniquePrintings),
+            hasOneValidTcgplayerProductRef(),
           ),
         ),
     { variantCount: variants.length },
@@ -405,6 +401,7 @@ export async function getCurrentCollectionValueHistory(): Promise<CollectionValu
         db
           .select({
             cardId: cardVariants.cardId,
+            cardProviderId: cards.providerId,
             printing: cardVariants.printing,
             observedOn: priceSeries.observedOn,
             amountsMinor: priceSeries.amountsMinor,
@@ -412,6 +409,7 @@ export async function getCurrentCollectionValueHistory(): Promise<CollectionValu
             currentObservedAt: currentPrices.observedAt,
           })
           .from(cardVariants)
+          .innerJoin(cards, eq(cardVariants.cardId, cards.id))
           .leftJoin(
             priceSeries,
             and(
@@ -436,6 +434,7 @@ export async function getCurrentCollectionValueHistory(): Promise<CollectionValu
               eq(cardVariants.languageCode, "en"),
               inArray(cardVariants.cardId, uniqueCardIds),
               inArray(cardVariants.printing, uniquePrintings),
+              hasOneValidTcgplayerProductRef(),
             ),
           ),
       { quantityHistoryRowCount: quantityRows.length },
@@ -463,10 +462,29 @@ export async function getCurrentCollectionValueHistory(): Promise<CollectionValu
           observedValue instanceof Date
             ? observedValue.toISOString()
             : `${observedValue.slice(0, 10)}T00:00:00.000Z`;
+
+        if (
+          !isTrustedTcgcsvHistoryDay(
+            row.cardProviderId,
+            row.printing,
+            observedAt.slice(0, 10),
+          )
+        ) {
+          continue;
+        }
+
         points.push({ observedAt, amountMinor });
       }
 
-      if (row.currentObservedAt && row.currentAmountMinor !== null) {
+      if (
+        row.currentObservedAt &&
+        row.currentAmountMinor !== null &&
+        isTrustedTcgcsvHistoryDay(
+          row.cardProviderId,
+          row.printing,
+          row.currentObservedAt.toISOString().slice(0, 10),
+        )
+      ) {
         points.push({
           observedAt: row.currentObservedAt.toISOString(),
           amountMinor: row.currentAmountMinor,

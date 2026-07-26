@@ -3,6 +3,11 @@ export type PriceHistoryPoint = {
   amountUsd: number;
 };
 
+export type SelectablePriceHistorySeries = {
+  printing: string;
+  condition: string;
+};
+
 export type DailyPriceHistoryPoint = PriceHistoryPoint & {
   timestamp: number;
   isRecorded: boolean;
@@ -109,6 +114,21 @@ export function calculatePriceChangePercentage(points: PriceHistoryPoint[]) {
   }
 
   return ((latestAmount - startingAmount) / startingAmount) * 100;
+}
+
+export function selectPriceHistorySeries<TSeries extends SelectablePriceHistorySeries>(
+  series: TSeries[],
+  printing?: string,
+) {
+  if (printing) {
+    return (
+      series.find(
+        (item) => item.printing === printing && item.condition === "unspecified",
+      ) ?? series.find((item) => item.printing === printing)
+    );
+  }
+
+  return series.find((item) => item.condition === "unspecified") ?? series[0];
 }
 
 function subtractUtcMonths(timestamp: number, months: number) {

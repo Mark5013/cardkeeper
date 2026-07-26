@@ -11,12 +11,14 @@ import {
   YAxis,
 } from "recharts";
 
+import { useCardPrintingSelection } from "@/components/card-printing-selection";
 import {
   calculatePriceChangePercentage,
   DEFAULT_PRICE_HISTORY_RANGE,
   expandDailyPricePoints,
   filterDailyPricePointsByRange,
   PRICE_HISTORY_RANGES,
+  selectPriceHistorySeries,
   type DailyPriceHistoryPoint,
   type PriceHistoryPoint,
   type PriceHistoryRange,
@@ -142,8 +144,9 @@ function PriceHistorySummary({
 }
 
 export function PriceHistoryChart({ series }: { series: PriceHistorySeries[] }) {
+  const { printing } = useCardPrintingSelection();
   const [selectedRange, setSelectedRange] = useState<PriceHistoryRange>(DEFAULT_PRICE_HISTORY_RANGE);
-  const selectedSeries = getPreferredSeries(series);
+  const selectedSeries = selectPriceHistorySeries(series, printing);
   const points = useMemo<ChartPoint[]>(() => {
     const dailyPoints = expandDailyPricePoints(selectedSeries?.points ?? []);
 
@@ -157,7 +160,7 @@ export function PriceHistoryChart({ series }: { series: PriceHistorySeries[] }) 
   if (!selectedSeries || points.length === 0) {
     return (
       <div className="mt-4 grid min-h-48 place-items-center rounded-lg border border-dashed border-[var(--line)] bg-[var(--surface)] p-7 text-center text-[var(--muted)]">
-        No price snapshots are available for this card yet.
+        No price snapshots are available for this finish yet.
       </div>
     );
   }
@@ -173,89 +176,85 @@ export function PriceHistoryChart({ series }: { series: PriceHistorySeries[] }) 
 
   return (
     <div className="mt-4 grid gap-4 2xl:grid-cols-[minmax(0,1fr)_14rem]">
-      <div className="rounded-lg border border-[var(--line)] bg-[var(--surface)] p-4">
-        <div className="h-72 w-full">
-          <ResponsiveContainer width="100%" height="100%">
-            <LineChart data={points} margin={{ top: 12, right: 16, bottom: 12, left: 4 }}>
-              <CartesianGrid stroke="var(--line)" strokeDasharray="4 4" vertical={false} />
-              <XAxis
-                dataKey="timestamp"
-                domain={["dataMin", "dataMax"]}
-                scale="time"
-                tick={{ fill: "var(--muted)", fontSize: 12 }}
-                tickFormatter={(value) => formatDate(Number(value))}
-                tickLine={false}
-                type="number"
-                axisLine={{ stroke: "var(--line)" }}
-                minTickGap={24}
-              />
-              <YAxis
-                width={56}
-                tick={{ fill: "var(--muted)", fontSize: 12 }}
-                tickFormatter={(value) => compactUsd.format(Number(value))}
-                tickLine={false}
-                axisLine={{ stroke: "var(--line)" }}
-                domain={[Math.max(0, minPrice - domainPadding), maxPrice + domainPadding]}
-              />
-              <Tooltip
-                content={<PriceTooltip />}
-                cursor={{ stroke: "var(--secondary)", strokeWidth: 1.5, strokeDasharray: "4 4" }}
-              />
-              <Line
-                dataKey="amountUsd"
-                dot={false}
-                activeDot={{ fill: "var(--secondary-hover)", r: 6, stroke: "var(--background)", strokeWidth: 2 }}
-                isAnimationActive={false}
-                name="Market price"
-                stroke="var(--secondary)"
-                strokeWidth={3}
-                type="monotone"
-              />
-            </LineChart>
-          </ResponsiveContainer>
-        </div>
+        <div className="rounded-lg border border-[var(--line)] bg-[var(--surface)] p-4">
+          <div className="h-72 w-full">
+            <ResponsiveContainer width="100%" height="100%">
+              <LineChart data={points} margin={{ top: 12, right: 16, bottom: 12, left: 4 }}>
+                <CartesianGrid stroke="var(--line)" strokeDasharray="4 4" vertical={false} />
+                <XAxis
+                  dataKey="timestamp"
+                  domain={["dataMin", "dataMax"]}
+                  scale="time"
+                  tick={{ fill: "var(--muted)", fontSize: 12 }}
+                  tickFormatter={(value) => formatDate(Number(value))}
+                  tickLine={false}
+                  type="number"
+                  axisLine={{ stroke: "var(--line)" }}
+                  minTickGap={24}
+                />
+                <YAxis
+                  width={56}
+                  tick={{ fill: "var(--muted)", fontSize: 12 }}
+                  tickFormatter={(value) => compactUsd.format(Number(value))}
+                  tickLine={false}
+                  axisLine={{ stroke: "var(--line)" }}
+                  domain={[Math.max(0, minPrice - domainPadding), maxPrice + domainPadding]}
+                />
+                <Tooltip
+                  content={<PriceTooltip />}
+                  cursor={{ stroke: "var(--secondary)", strokeWidth: 1.5, strokeDasharray: "4 4" }}
+                />
+                <Line
+                  dataKey="amountUsd"
+                  dot={false}
+                  activeDot={{ fill: "var(--secondary-hover)", r: 6, stroke: "var(--background)", strokeWidth: 2 }}
+                  isAnimationActive={false}
+                  name="Market price"
+                  stroke="var(--secondary)"
+                  strokeWidth={3}
+                  type="monotone"
+                />
+              </LineChart>
+            </ResponsiveContainer>
+          </div>
 
-        <div className="mt-3 overflow-x-auto pb-1">
-          <div
-            aria-label="Price history range"
-            className="mx-auto flex w-max gap-1 rounded-lg border border-[var(--line)] bg-[var(--background)] p-1"
-            role="group"
-          >
-            {PRICE_HISTORY_RANGES.map((range) => {
-              const isSelected = range.value === selectedRange;
+          <div className="mt-3 overflow-x-auto pb-1">
+            <div
+              aria-label="Price history range"
+              className="mx-auto flex w-max gap-1 rounded-lg border border-[var(--line)] bg-[var(--background)] p-1"
+              role="group"
+            >
+              {PRICE_HISTORY_RANGES.map((range) => {
+                const isSelected = range.value === selectedRange;
 
-              return (
-                <button
-                  aria-pressed={isSelected}
-                  className={`cursor-pointer rounded-md px-3 py-1.5 text-xs font-bold transition-colors ${
-                    isSelected
-                      ? "bg-[var(--secondary)] text-[var(--background)]"
-                      : "text-[var(--muted)] hover:bg-[var(--surface)] hover:text-[var(--ink)]"
-                  }`}
-                  key={range.value}
-                  onClick={() => setSelectedRange(range.value)}
-                  type="button"
-                >
-                  {range.shortLabel}
-                </button>
-              );
-            })}
+                return (
+                  <button
+                    aria-pressed={isSelected}
+                    className={`cursor-pointer rounded-md px-3 py-1.5 text-xs font-bold transition-colors ${
+                      isSelected
+                        ? "bg-[var(--secondary)] text-[var(--background)]"
+                        : "text-[var(--muted)] hover:bg-[var(--surface)] hover:text-[var(--ink)]"
+                    }`}
+                    key={range.value}
+                    onClick={() => setSelectedRange(range.value)}
+                    type="button"
+                  >
+                    {range.shortLabel}
+                  </button>
+                );
+              })}
+            </div>
           </div>
         </div>
-      </div>
 
-      <PriceHistorySummary
-        latestPoint={latestPoint}
-        priceChangePercentage={priceChangePercentage}
-        recordedPointCount={recordedPointCount}
-        rangeLabel={selectedRangeLabel}
-        selectedSeries={selectedSeries}
-        chartDayCount={points.length}
-      />
+        <PriceHistorySummary
+          latestPoint={latestPoint}
+          priceChangePercentage={priceChangePercentage}
+          recordedPointCount={recordedPointCount}
+          rangeLabel={selectedRangeLabel}
+          selectedSeries={selectedSeries}
+          chartDayCount={points.length}
+        />
     </div>
   );
-}
-
-function getPreferredSeries(series: PriceHistorySeries[]) {
-  return series.find((item) => item.condition === "unspecified") ?? series[0];
 }

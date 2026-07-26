@@ -2,11 +2,17 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 
+import { CardPrintingSelectionProvider } from "@/components/card-printing-selection";
+import { CollectionControls } from "@/components/collection/collection-controls";
 import { ImageWithFallback } from "@/components/image-with-fallback";
 import { PriceHistoryChart } from "@/components/price-history-chart";
 import { SiteHeader } from "@/components/site-header";
-import { CollectionControls } from "@/components/collection/collection-controls";
-import { getCatalogPokemonCard, getCatalogPokemonCardPriceHistory } from "@/lib/catalog/data";
+import { TcgplayerListingLink } from "@/components/tcgplayer-listing-link";
+import {
+  getCatalogPokemonCard,
+  getCatalogPokemonCardPriceHistory,
+  getCatalogTcgplayerListingLinks,
+} from "@/lib/catalog/data";
 import { getOwnedCardVariants } from "@/lib/collection/data";
 import { getEbayListingsForCard, type EbayListing } from "@/lib/ebay/listings";
 import { getCardPrintingOptions } from "@/lib/pokemon-tcg/printing";
@@ -86,18 +92,30 @@ export async function generateMetadata({
   };
 }
 
-export default async function CardDetailPage({ params }: PageProps<"/cards/[id]">) {
-  const { id } = await params;
+export default async function CardDetailPage({
+  params,
+  searchParams,
+}: PageProps<"/cards/[id]">) {
+  const [{ id }, cardSearchParams] = await Promise.all([params, searchParams]);
   const card = await getCatalogPokemonCard(id);
 
   if (!card) notFound();
 
-  const [ownedVariants, priceHistory, ebayListings] = await Promise.all([
+  const [ownedVariants, priceHistory, ebayListings, tcgplayerListingLinks] = await Promise.all([
     getOwnedCardVariants(card.id),
     getCatalogPokemonCardPriceHistory(card.id, card.set.id),
     getEbayListingsForCard(card),
+    getCatalogTcgplayerListingLinks(card.id),
   ]);
   const printings = getCardPrintingOptions(card);
+  const requestedPrinting =
+    typeof cardSearchParams.printing === "string" ? cardSearchParams.printing : undefined;
+  const initialPrinting =
+    printings.find((printing) => printing.value === requestedPrinting)?.value ??
+    printings.find((printing) =>
+      ownedVariants?.some((holding) => holding.printing === printing.value),
+    )?.value ??
+    printings[0]?.value;
   const tcgplayerUrl = getSafeExternalUrl(card.tcgplayer?.url);
   const details = [
     ["Set", card.set.name],
@@ -110,7 +128,11 @@ export default async function CardDetailPage({ params }: PageProps<"/cards/[id]"
   ].filter((detail): detail is [string, string] => Boolean(detail[1]));
 
   return (
-    <main className="min-h-screen overflow-x-hidden">
+    <CardPrintingSelectionProvider
+      initialPrinting={initialPrinting}
+      printingOptions={printings}
+    >
+      <main className="min-h-screen overflow-x-hidden">
       <div className="hero-glow" aria-hidden="true" />
       <SiteHeader />
 
@@ -148,13 +170,11 @@ export default async function CardDetailPage({ params }: PageProps<"/cards/[id]"
                 Compare live marketplace listings before buying or valuing your copy.
               </p>
               <div className="mt-5 grid gap-2">
-                {tcgplayerUrl ? (
-                  <ListingLink href={tcgplayerUrl} label="TCGplayer listings" />
-                ) : (
-                  <p className="rounded-lg border border-dashed border-[var(--line)] px-4 py-3 text-sm text-[var(--muted)]">
-                    TCGplayer listings are not available for this card.
-                  </p>
-                )}
+                <TcgplayerListingLink
+                  canUseProviderFallback={tcgplayerListingLinks.canUseProviderFallback}
+                  fallbackHref={tcgplayerUrl}
+                  urlsByPrinting={tcgplayerListingLinks.urlsByPrinting}
+                />
                 <ListingLink href={ebayListings.searchUrl} label="Search eBay" />
               </div>
               {ebayListings.listings.length ? (
@@ -276,6 +296,7 @@ export default async function CardDetailPage({ params }: PageProps<"/cards/[id]"
           </div>
         </div>
       </article>
-    </main>
+      </main>
+    </CardPrintingSelectionProvider>
   );
 }

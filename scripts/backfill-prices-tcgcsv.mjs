@@ -11,10 +11,14 @@ import { promisify } from "node:util";
 import postgres from "postgres";
 
 import {
+  assertCompatibleTcgcsvHistoryMappingFingerprint,
+  assertCompatibleTcgcsvHistoryStageMappingPolicy,
   buildHistoricalPriceRecordsByGroup,
   createProductVariantMappings,
+  createTcgcsvHistoryMappingFingerprint,
   getNightlyTcgcsvGroupOrder,
   selectChangedPriceRecords,
+  TCGCSV_HISTORY_MAPPING_POLICY_VERSION,
 } from "./lib/tcgcsv-history-core.mjs";
 
 const { loadEnvConfig } = nextEnv;
@@ -233,6 +237,16 @@ function initializeStage() {
 
   const storedFrom = getStageMetadata("archive_from");
   const storedTo = getStageMetadata("archive_to");
+  const storedMappingPolicyVersion = getStageMetadata("mapping_policy_version");
+  const hasExistingState =
+    storedFrom !== null ||
+    storedTo !== null ||
+    stageHasHistoricalState();
+
+  assertCompatibleTcgcsvHistoryStageMappingPolicy({
+    hasExistingState,
+    storedVersion: storedMappingPolicyVersion,
+  });
 
   if ((storedFrom && storedFrom !== options.from) || (storedTo && storedTo !== options.to)) {
     throw new Error(
@@ -240,24 +254,25 @@ function initializeStage() {
     );
   }
 
+  setStageMetadata("mapping_policy_version", TCGCSV_HISTORY_MAPPING_POLICY_VERSION);
   setStageMetadata("archive_from", options.from);
   setStageMetadata("archive_to", options.to);
 }
 
 async function backfillPrices() {
   const startedAt = Date.now();
-  const mappingRows = await sql`
-    select
-      refs.ref_value as product_id,
-      refs.card_variant_id,
-      variants.printing
-    from card_variant_external_refs refs
-    inner join card_variants variants on variants.id = refs.card_variant_id
-    where refs.source = 'tcgplayer'
-      and refs.ref_type = 'product_id'
-      and variants.condition = 'unspecified'
-      and variants.language_code = 'en'
-  `;
+  const mappingRows = await getEligibleTcgplayerMappingRows();
+  const mappingFingerprint = createTcgcsvHistoryMappingFingerprint(mappingRows);
+  const storedMappingFingerprint = getStageMetadata("mapping_fingerprint");
+
+  assertCompatibleTcgcsvHistoryMappingFingerprint({
+    currentFingerprint: mappingFingerprint,
+    hasExistingState: stageHasHistoricalState(),
+    storedFingerprint: storedMappingFingerprint,
+  });
+  if (!storedMappingFingerprint) {
+    setStageMetadata("mapping_fingerprint", mappingFingerprint);
+  }
 
   insertStageVariants(mappingRows.map((row) => row.card_variant_id));
   const localVariantIds = loadLocalVariantIds();
@@ -320,6 +335,8 @@ async function backfillPrices() {
     if (!options.keepFiles) await cleanupArchiveFiles(archiveDate);
   }
 
+  await assertCurrentTcgcsvHistoryMappingFingerprint(mappingFingerprint);
+
   const stagedArchiveCount = Number(
     stage.prepare("select count(*) as count from archive_imports").get().count,
   );
@@ -332,10 +349,28 @@ async function backfillPrices() {
   }
 
   await stageLegacyHistoryAfter(options.to, previousAmounts, localVariantIds);
+  await assertCurrentTcgcsvHistoryMappingFingerprint(mappingFingerprint);
   const pointCount = Number(stage.prepare("select count(*) as count from history_points").get().count);
   const seriesCount = Number(
     stage.prepare("select count(distinct variant_key) as count from history_points").get().count,
   );
+  const stagedBounds = stage
+    .prepare(
+      "select min(observed_day) as earliest, max(observed_day) as latest from history_points",
+    )
+    .get();
+  const stageExpectation = {
+    earliest:
+      stagedBounds.earliest === null
+        ? null
+        : fromObservedDay(Number(stagedBounds.earliest)),
+    latest:
+      stagedBounds.latest === null
+        ? null
+        : fromObservedDay(Number(stagedBounds.latest)),
+    points: pointCount,
+    series: seriesCount,
+  };
 
   console.log(
     `Compressed stage complete: ${pointCount.toLocaleString()} changed prices across ${seriesCount.toLocaleString()} variants in ${formatDuration(Date.now() - startedAt)}.`,
@@ -347,7 +382,8 @@ async function backfillPrices() {
   }
 
   if (options.verifyUpload) {
-    await verifyUploadedPriceSeries({ points: pointCount, series: seriesCount });
+    await assertCurrentTcgcsvHistoryMappingFingerprint(mappingFingerprint);
+    await verifyUploadedPriceSeries(stageExpectation);
     if (options.removeLegacy) await removeLegacyPricePoints();
     if (options.restoreLegacyFrom) await restoreLegacyPricePoints(options.restoreLegacyFrom);
     console.log(`Stage retained at ${stagePath}.`);
@@ -359,14 +395,55 @@ async function backfillPrices() {
     return;
   }
 
-  const uploadStats = await uploadPriceSeries();
-  await verifyUploadedPriceSeries(uploadStats);
+  await assertCurrentTcgcsvHistoryMappingFingerprint(mappingFingerprint);
+  const uploadStats = await uploadPriceSeries(stageExpectation, mappingFingerprint);
   setStageMetadata("uploaded_at", new Date().toISOString());
   setStageMetadata("uploaded_points", String(uploadStats.points));
 
   console.log(
-    `Uploaded ${uploadStats.points.toLocaleString()} changed prices in ${uploadStats.series.toLocaleString()} compressed TCGCSV market series. Legacy price_points rows were preserved for verification.`,
+    `Replaced ${uploadStats.replacedSeries.toLocaleString()} prior TCGCSV market series with ${uploadStats.points.toLocaleString()} changed prices across ${uploadStats.series.toLocaleString()} safe compressed series. Legacy price_points rows were preserved for verification.`,
   );
+}
+
+async function getEligibleTcgplayerMappingRows(database = sql) {
+  return database`
+    with eligible_product_refs as (
+      select
+        refs.card_variant_id,
+        min(btrim(refs.ref_value)) as product_id
+      from card_variant_external_refs refs
+      where refs.source = 'tcgplayer'
+        and refs.ref_type = 'product_id'
+      group by refs.card_variant_id
+      having count(*) = 1
+        and bool_and(btrim(refs.ref_value) ~ '^[1-9][0-9]{0,14}$')
+        and bool_and(
+          coalesce(refs.metadata ->> 'tcgcsvMappingStatus', '') <> 'stale'
+        )
+    )
+    select
+      refs.product_id,
+      refs.card_variant_id,
+      variants.printing
+    from eligible_product_refs refs
+    inner join card_variants variants on variants.id = refs.card_variant_id
+    where variants.condition = 'unspecified'
+      and variants.language_code = 'en'
+  `;
+}
+
+async function assertCurrentTcgcsvHistoryMappingFingerprint(
+  expectedFingerprint,
+  database = sql,
+) {
+  const currentRows = await getEligibleTcgplayerMappingRows(database);
+  const currentFingerprint = createTcgcsvHistoryMappingFingerprint(currentRows);
+
+  if (currentFingerprint !== expectedFingerprint) {
+    throw new Error(
+      "The TCGplayer product-ref mapping changed during this history run. Use --reset-stage and keep ref-changing jobs stopped until the replacement is complete.",
+    );
+  }
 }
 
 async function restoreLegacyPricePoints(from) {
@@ -483,8 +560,8 @@ async function removeLegacyPricePoints() {
   );
 }
 
-async function verifyUploadedPriceSeries(expected) {
-  const [stats] = await sql`
+async function verifyUploadedPriceSeries(expected, database = sql) {
+  const [stats] = await database`
     select
       count(*)::integer as series,
       coalesce(sum(cardinality(observed_on)), 0)::bigint as points,
@@ -499,7 +576,7 @@ async function verifyUploadedPriceSeries(expected) {
       and price_type = 'market'
       and currency = 'USD'
   `;
-  const [ordering] = await sql`
+  const [ordering] = await database`
     select count(*)::integer as invalid
     from price_series series
     where series.source = 'tcgcsv'
@@ -512,7 +589,7 @@ async function verifyUploadedPriceSeries(expected) {
           and series.observed_on[idx] >= series.observed_on[idx + 1]
       )
   `;
-  const [latest] = await sql`
+  const [latest] = await database`
     select count(*)::integer as mismatches
     from price_series series
     inner join current_prices prices
@@ -534,8 +611,8 @@ async function verifyUploadedPriceSeries(expected) {
     Number(stats.malformed) !== 0 ||
     Number(ordering.invalid) !== 0 ||
     Number(latest.mismatches) !== 0 ||
-    stats.earliest !== options.from ||
-    stats.latest !== options.to
+    stats.earliest !== expected.earliest ||
+    stats.latest !== expected.latest
   ) {
     throw new Error(
       `Uploaded price_series failed verification: ${JSON.stringify({ ...stats, invalidOrder: Number(ordering.invalid), latestMismatches: Number(latest.mismatches) })}`,
@@ -903,13 +980,9 @@ async function stageLegacyHistoryAfter(lastArchiveDate, previousAmounts, localVa
     const stageRecords = [];
 
     for (const [variantId, amountMinor] of amountsByVariant) {
-      let localId = localVariantIds.get(variantId);
+      const localId = localVariantIds.get(variantId);
 
-      if (!localId) {
-        stage.prepare("insert into variants (variant_id) values (?) on conflict (variant_id) do nothing").run(variantId);
-        localId = Number(stage.prepare("select local_id from variants where variant_id = ?").get(variantId).local_id);
-        localVariantIds.set(variantId, localId);
-      }
+      if (!localId) continue;
 
       stageRecords.push({ card_variant_id: String(localId), amount_minor: amountMinor });
     }
@@ -947,66 +1020,119 @@ function stageLegacyDate(observedOn, changedRecords) {
   }
 }
 
-async function uploadPriceSeries() {
-  const iterator = stage
-    .prepare(`
-      select variants.variant_id, history_points.observed_day, history_points.amount_minor
-      from history_points
-      inner join variants on variants.local_id = history_points.variant_key
-      order by history_points.variant_key, history_points.observed_day
-    `)
-    .iterate();
-  let currentVariantId = null;
-  let observedOn = [];
-  let amountsMinor = [];
-  let batch = [];
-  let pointCount = 0;
-  let seriesCount = 0;
+async function uploadPriceSeries(expected, mappingFingerprint) {
+  return sql.begin(async (transaction) => {
+    await transaction`
+      lock table card_variants, card_variant_external_refs in share mode
+    `;
+    await assertCurrentTcgcsvHistoryMappingFingerprint(
+      mappingFingerprint,
+      transaction,
+    );
 
-  const flushSeries = async () => {
-    if (!currentVariantId) return;
+    const deletedSeries = await transaction`
+      delete from price_series
+      where source = 'tcgcsv'
+        and price_type = 'market'
+        and currency = 'USD'
+      returning card_variant_id
+    `;
+    const iterator = stage
+      .prepare(`
+        select variants.variant_id, history_points.observed_day, history_points.amount_minor
+        from history_points
+        inner join variants on variants.local_id = history_points.variant_key
+        order by history_points.variant_key, history_points.observed_day
+      `)
+      .iterate();
+    let currentVariantId = null;
+    let observedOn = [];
+    let amountsMinor = [];
+    let batch = [];
+    let earliest = null;
+    let latest = null;
+    let pointCount = 0;
+    let seriesCount = 0;
 
-    batch.push({
-      card_variant_id: currentVariantId,
-      source: "tcgcsv",
-      price_type: "market",
-      currency: "USD",
-      observed_on: observedOn,
-      amounts_minor: amountsMinor,
-      updated_at: new Date(),
-    });
-    pointCount += observedOn.length;
-    seriesCount += 1;
-    observedOn = [];
-    amountsMinor = [];
+    const flushSeries = async () => {
+      if (!currentVariantId) return;
 
-    if (batch.length >= SERIES_WRITE_BATCH_SIZE) {
-      await writeSeriesBatch(batch);
-      batch = [];
-      if (seriesCount % 2000 === 0) {
-        console.log(`Uploaded ${seriesCount.toLocaleString()} compressed price series...`);
+      batch.push({
+        card_variant_id: currentVariantId,
+        source: "tcgcsv",
+        price_type: "market",
+        currency: "USD",
+        observed_on: observedOn,
+        amounts_minor: amountsMinor,
+        updated_at: new Date(),
+      });
+      pointCount += observedOn.length;
+      seriesCount += 1;
+      observedOn = [];
+      amountsMinor = [];
+
+      if (batch.length >= SERIES_WRITE_BATCH_SIZE) {
+        await writeSeriesBatch(batch, transaction);
+        batch = [];
+        if (seriesCount % 2000 === 0) {
+          console.log(
+            `Uploaded ${seriesCount.toLocaleString()} compressed price series...`,
+          );
+        }
+      }
+    };
+
+    for (const row of iterator) {
+      const variantId = String(row.variant_id);
+
+      if (currentVariantId && variantId !== currentVariantId) {
+        await flushSeries();
+      }
+      if (variantId !== currentVariantId) currentVariantId = variantId;
+
+      const observedOnValue = fromObservedDay(Number(row.observed_day));
+      observedOn.push(observedOnValue);
+      amountsMinor.push(Number(row.amount_minor));
+      if (earliest === null || observedOnValue < earliest) {
+        earliest = observedOnValue;
+      }
+      if (latest === null || observedOnValue > latest) {
+        latest = observedOnValue;
       }
     }
-  };
 
-  for (const row of iterator) {
-    const variantId = String(row.variant_id);
+    await flushSeries();
+    if (batch.length > 0) {
+      await writeSeriesBatch(batch, transaction);
+    }
 
-    if (currentVariantId && variantId !== currentVariantId) await flushSeries();
-    if (variantId !== currentVariantId) currentVariantId = variantId;
+    const uploadStats = {
+      earliest,
+      latest,
+      points: pointCount,
+      replacedSeries: deletedSeries.length,
+      series: seriesCount,
+    };
 
-    observedOn.push(fromObservedDay(Number(row.observed_day)));
-    amountsMinor.push(Number(row.amount_minor));
-  }
+    if (
+      uploadStats.points !== expected.points ||
+      uploadStats.series !== expected.series ||
+      uploadStats.earliest !== expected.earliest ||
+      uploadStats.latest !== expected.latest
+    ) {
+      throw new Error(
+        `Staged price-series iteration did not match its expected summary: ${JSON.stringify({ expected, uploadStats })}`,
+      );
+    }
 
-  await flushSeries();
-  if (batch.length > 0) await writeSeriesBatch(batch);
+    await verifyUploadedPriceSeries(uploadStats, transaction);
 
-  return { points: pointCount, series: seriesCount };
+    return uploadStats;
+  });
 }
 
-async function writeSeriesBatch(batch) {
-  await sql`
+async function writeSeriesBatch(batch, database = sql) {
+  await database`
     insert into price_series ${sql(
       batch,
       "card_variant_id",
@@ -1214,6 +1340,24 @@ function setStageMetadata(key, value) {
   stage
     .prepare("insert into metadata (key, value) values (?, ?) on conflict (key) do update set value = excluded.value")
     .run(key, value);
+}
+
+function stageHasHistoricalState() {
+  return (
+    Number(
+      stage
+        .prepare(`
+          select exists (
+            select 1 from variants
+            union all
+            select 1 from history_points
+            union all
+            select 1 from archive_imports
+          ) as has_state
+        `)
+        .get().has_state,
+    ) === 1
+  );
 }
 
 function assertSafeWorkingDirectory(value) {

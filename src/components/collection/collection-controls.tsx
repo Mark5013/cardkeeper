@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { FormEvent, useState } from "react";
 
+import { useCardPrintingSelection } from "@/components/card-printing-selection";
 import { FieldSelect } from "@/components/ui/field-select";
 import { QuantityAdjuster } from "@/components/ui/quantity-adjuster";
 import { CARD_CONDITIONS } from "@/lib/collection/options";
@@ -29,11 +30,11 @@ export function CollectionControls({
   isAuthenticated: boolean;
 }) {
   const router = useRouter();
-  const initialHolding = initialHoldings[0];
+  const { printing, setPrinting } = useCardPrintingSelection();
+  const initialHolding = initialHoldings.find((holding) => holding.printing === printing);
   const [holdings, setHoldings] = useState(initialHoldings);
-  const [printing, setPrinting] = useState(initialHolding?.printing ?? printings[0]?.value ?? "normal");
   const [condition, setCondition] = useState(initialHolding?.condition ?? "near_mint");
-  const [quantity, setQuantity] = useState(String(initialHolding?.quantity ?? 1));
+  const [quantityDrafts, setQuantityDrafts] = useState<Record<string, string>>({});
   const [message, setMessage] = useState<string | null>(null);
   const [isError, setIsError] = useState(false);
   const [isPending, setIsPending] = useState(false);
@@ -41,6 +42,11 @@ export function CollectionControls({
   const selectedHolding = holdings.find(
     (holding) => holding.printing === printing && holding.condition === condition,
   );
+  const selectionKey = `${printing}:${condition}`;
+  const quantity = quantityDrafts[selectionKey] ?? String(selectedHolding?.quantity ?? 1);
+  const setQuantity = (nextQuantity: string) => {
+    setQuantityDrafts((current) => ({ ...current, [selectionKey]: nextQuantity }));
+  };
   const selectedPrinting = printings.find((option) => option.value === printing);
   const marketPrice =
     selectedPrinting?.price?.market ??
@@ -51,10 +57,6 @@ export function CollectionControls({
   function updateSelection(nextPrinting: string, nextCondition: string) {
     setPrinting(nextPrinting);
     setCondition(nextCondition);
-    const holding = holdings.find(
-      (item) => item.printing === nextPrinting && item.condition === nextCondition,
-    );
-    setQuantity(String(holding?.quantity ?? 1));
     setMessage(null);
   }
 

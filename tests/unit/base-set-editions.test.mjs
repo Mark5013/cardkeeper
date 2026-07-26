@@ -3,6 +3,7 @@ import test from "node:test";
 
 import {
   applyBaseSetCardOverrides,
+  applyCatalogCardOverrides,
   applyBaseSetSetOverrides,
   buildCanonicalProductMappings,
   createUnlimitedProviderCard,
@@ -93,6 +94,26 @@ test("creates an Unlimited provider card with TCGplayer artwork and identity", (
   assert.equal(
     getTcgplayerHighResolutionImageUrl(card.images.small),
     card.images.large,
+  );
+});
+
+test("repairs Antique Cover Fossil's upstream collector-number mismatch", () => {
+  const original = {
+    id: "zsv10pt5-80",
+    name: "Antique Cover Fossil",
+    number: "60",
+    set: { id: "zsv10pt5", name: "Black Bolt" },
+  };
+  const repaired = applyCatalogCardOverrides(original);
+
+  assert.equal(repaired.number, "80");
+  assert.equal(original.number, "60");
+  assert.equal(
+    applyCatalogCardOverrides({
+      ...original,
+      id: "zsv10pt5-60",
+    }).number,
+    "60",
   );
 });
 
