@@ -183,13 +183,13 @@ price. Two reviewed set-mapping gaps were safe to repair:
 After those imports and the modern qualified-printing repair:
 
 - 20,338 of 20,581 active cards have at least one trusted current price.
-- 243 cards have no trusted current price, and another 75 have at least one
+- 243 cards have no trusted current price, and another 78 have at least one
   priced finish and at least one unpriced finish.
-- 34,584 of 34,876 application-visible finishes are priced: 99.16% coverage.
-- 292 application-visible finishes remain unpriced.
+- 34,584 of 34,879 application-visible finishes are priced: 99.15% coverage.
+- 295 application-visible finishes remain unpriced.
 - Prismatic Evolutions, Black Bolt, and White Flare have zero finish gaps.
 
-The 292 remaining finish gaps are:
+The 295 remaining finish gaps are:
 
 - 232 with multiple TCGplayer product refs. These are primarily distinct
   physical products such as Staff, Prerelease, placement, unreviewed foil
@@ -198,7 +198,20 @@ The 292 remaining finish gaps are:
 - 18 where the provider advertises a finish for which no local variant row
   exists.
 - 17 existing variants with no TCGplayer product ref.
-- 25 with one exact trusted product ref but no current TCGCSV market value.
+- 28 with one exact trusted product ref but no current TCGCSV market value.
+
+The first documented denominator omitted three trusted local finishes because
+the catalog provider does not advertise their finish keys. A repeatable-read,
+database-only audit on 2026-07-26 confirmed that the application still offers
+them through their exact local TCGplayer refs:
+
+- Rocket's Raikou ex `ex8-108`, Normal, product `88785`
+- Gengar `ecard3-10`, Reverse Holofoil, product `85669`
+- Kingdra `ex7-12`, Normal, product `86445`
+
+All three lack a current TCGCSV market row. Adding them corrects the finish
+denominator and singleton/no-market bucket without changing the 243 wholly
+unpriced cards or any ambiguous-ref count.
 
 Targeted audits of Skyridge, BW Promos, and Nintendo Promos confirmed that the
 remaining gaps are not a simple collector-number matching failure. Some exact
@@ -207,14 +220,100 @@ products that the current finish model cannot distinguish. The importer does
 not substitute old provider snapshots, copy a price across finishes, or choose
 one of several products merely to increase coverage.
 
+### Reviewed Scarlet & Violet promo batch
+
+The database-only gap manifest produced a first safe qualified-printing batch
+for TCGCSV group `22872`, `Scarlet & Violet Black Star Promos`: 110 exact
+products across 55 cards. Exact product-name qualifiers distinguish
+Prerelease, Prerelease Staff, Pokémon Center, Cosmos Holofoil, Staff, World
+Championships, and World Championships Staff printings.
+
+The reviewed repair retained 30 ordinary refs, created 80 qualified variants,
+moved 80 refs, and retired 25 empty generic variants. Its dry run and
+transactional rollback validation passed with zero collection rows, quantity
+history rows, current prices, or compressed price series on the source
+variants. An exact pre-repair row snapshot was saved under `.artifacts/tcgcsv/`
+before the production transaction was applied on 2026-07-26.
+
+The post-commit command reports the repair fully applied. A database-only audit
+then reported:
+
+- 34,584 of 34,932 application-visible finishes priced;
+- 348 finish gaps across 38 sets;
+- 176 multiple-ref gaps, 17 missing variants, 17 missing refs, and 138 exact
+  singleton refs without current market values; and
+- 243 wholly unpriced cards and 76 cards with partial finish coverage.
+
+This expectedly increases visible gaps until a later changed-build refresh:
+each physical printing is now represented independently, but the repair did
+not fabricate or copy current prices.
+
+### Reviewed catalog product-ref batch
+
+Catalog price-proxy evidence resolved another 34 exact product identities
+across 14 sets. Seventeen existing variants needed a ref; seventeen
+provider-advertised finishes needed both a variant and a ref. Eight product IDs
+were independently corroborated by the same card's sibling finish, with no
+cross-card placements.
+
+The locked repair transaction created 17 variants and attached all 34 exact
+refs after saving a content-addressed before-state snapshot. Rollback
+validation, post-commit idempotency verification, and the database-only audit
+all passed. Current coverage is now:
+
+- 34,584 of 34,932 application-visible finishes priced;
+- 348 finish gaps across 38 sets;
+- 176 multiple-ref gaps, zero missing variants, zero missing refs, and 172
+  exact singleton refs without current market values; and
+- 243 wholly unpriced cards and 76 cards with partial finish coverage.
+
+The unchanged total is intentional: mapping defects became trusted singleton
+identities, but no stale catalog price was copied into current TCGCSV data.
+
+### Reviewed promo Prerelease/Staff batch
+
+Exact TCGplayer first-party product-ID evidence identified 81 unambiguous
+Prerelease plus Prerelease Staff pairs across Black and White Promos, XY
+Promos, SM Promos, and SWSH Promo Cards. The checked-in allowlist contains 162
+exact product IDs and names; it does not classify other products by a broad
+name pattern.
+
+The locked repair transaction created 162 first-class qualified variants,
+moved all 162 refs, and retired 81 empty generic Holofoil sources. Preflight
+and rollback validation confirmed zero collection, quantity-history,
+current-price, or compressed-series rows on the sources. The production
+transaction used the content-addressed snapshot
+`.artifacts/tcgcsv/tcgcsv-promo-prerelease-repair-before-2026-07-26-2cbb7399752e.json`
+and passed post-commit idempotency verification.
+
+An explicitly requested same-build refresh then pulled only those four groups.
+Its dry run found zero stale refs; the write pass upserted 910 TCGCSV
+current-price rows and appended 159 compressed-history changes. It populated
+159 of the 162 new qualified finishes. Alolan Sandslash `smp-SM18` Staff,
+Persian `smp-SM182` Staff, and Snorlax `swshp-SWSH068` Staff have no current
+market row in that build.
+
+The zero-request database-only audit now reports:
+
+- 34,742 of 35,013 application-visible finishes priced;
+- 271 finish gaps across 38 sets;
+- 96 multiple-ref gaps, zero missing variants, zero missing refs, and 175
+  exact singleton refs without current market values; and
+- 163 wholly unpriced cards and 79 cards with partial finish coverage.
+
+The refresh also found a separate exact Worlds 2013 plus Staff pair on
+Champions Festival `bwp-BW95`. Its prior current price was invalidated when the
+second product ref made the generic Normal identity ambiguous; it remains
+unpriced pending its own qualified-printing repair.
+
 ## Remaining work before JP and sealed expansion
 
 The database-first investigation sequence is documented in
 [`TCGCSV_MISSING_PRICE_DISCOVERY_PLAN_2026-07-25.md`](./TCGCSV_MISSING_PRICE_DISCOVERY_PLAN_2026-07-25.md).
 
 1. Continue modeling physical qualifiers explicitly. Remaining examples include
-   Staff, Prerelease, league placement, Energy Symbol Pattern, metal cards, and
-   alternate holo patterns.
+   unreviewed Staff and Prerelease products, league placement, Energy Symbol
+   Pattern, metal cards, and alternate holo patterns.
 2. Review and retire static history quarantine cutoffs only when their repaired
    series have enough verified post-repair history for the intended UI window.
 3. Add language-aware card, variant, price, and marketplace-link identities.
@@ -232,6 +331,9 @@ TCGCSV asks consumers to identify requests, rate-limit them, and avoid unnecessa
 # Full read-only mapping audit. Inspect the reported issue count:
 npm run prices:audit-mappings
 
+# Database-only missing-price manifest. Makes no TCGCSV provider requests:
+npm run prices:audit-missing -- --database-only
+
 # Reviewed one-time repair; now reports safely when already applied:
 npm run prices:repair-mappings
 npm run prices:repair-mappings -- --apply
@@ -240,8 +342,26 @@ npm run prices:repair-mappings -- --apply
 npm run prices:repair-modern-printings
 npm run prices:repair-modern-printings -- --apply
 
+# Applied Scarlet & Violet promo-printing repair; now reports safely when already applied:
+npm run prices:repair-sv-promo-printings
+npm run prices:repair-sv-promo-printings -- --rollback
+npm run prices:repair-sv-promo-printings -- --apply
+
+# Applied catalog product-ref repair; now reports safely when already applied:
+npm run prices:repair-catalog-refs
+npm run prices:repair-catalog-refs -- --rollback
+npm run prices:repair-catalog-refs -- --apply
+
+# Applied BW/XY/SM/SWSH promo Prerelease/Staff repair:
+npm run prices:repair-promo-prerelease
+npm run prices:repair-promo-prerelease -- --rollback
+npm run prices:repair-promo-prerelease -- --apply
+
 # Routine daily refresh:
 npm run prices:refresh -- --skip-if-current
+
+# Explicitly scoped multi-group refresh:
+npm run prices:refresh -- --group-ids=1407,1451,1861,2545
 
 # Rebuild after an intentional product-ref/printing identity change:
 npm run prices:backfill -- --from=2024-02-08 --to=YYYY-MM-DD --reset-stage --stage-only --verify-legacy --temp-dir=<new-recovery-directory>

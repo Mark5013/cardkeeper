@@ -7,6 +7,9 @@ import {
   reviewTcgcsvQualifiedPrintingRef,
   TCGCSV_QUALIFIED_PRINTING_KEYS,
 } from "../../scripts/lib/tcgcsv-qualified-printing.mjs";
+import promoPrereleaseRepairPlan from "../../scripts/data/tcgcsv-promo-prerelease-printing-repairs-2026-07-26.json" with {
+  type: "json",
+};
 
 test("classifies the reviewed patterned products in each official set group", () => {
   const cases = [
@@ -231,6 +234,258 @@ test("does not change ordinary ref reconciliation outside reviewed qualifiers", 
       normalizedSubtypes: ["holofoil"],
       printing: "holofoil",
       productName: "Buneary - 083/131 (Poke Ball Pattern)",
+    }).reason,
+    null,
+  );
+});
+
+test("classifies only the exact reviewed Scarlet & Violet promo products", () => {
+  const groupId =
+    REVIEWED_TCGCSV_QUALIFIED_PRINTING_GROUPS.SCARLET_VIOLET_PROMOS;
+
+  assert.deepEqual(
+    classifyReviewedTcgcsvQualifiedPrinting({
+      groupId,
+      productId: "551688",
+      productName: "Thwackey - 115",
+    }),
+    {
+      status: "ordinary",
+      printing: null,
+      qualifier: null,
+    },
+  );
+  assert.deepEqual(
+    classifyReviewedTcgcsvQualifiedPrinting({
+      groupId,
+      productId: "563315",
+      productName: "Thwackey - 115 (Prerelease) [Staff]",
+    }),
+    {
+      status: "qualified",
+      printing: TCGCSV_QUALIFIED_PRINTING_KEYS.PRERELEASE_STAFF_HOLOFOIL,
+      qualifier: "Prerelease Staff",
+    },
+  );
+  assert.deepEqual(
+    classifyReviewedTcgcsvQualifiedPrinting({
+      groupId,
+      productId: "594468",
+      productName: "Magneton - 159 (Pokémon Center Exclusive)",
+    }),
+    {
+      status: "qualified",
+      printing: TCGCSV_QUALIFIED_PRINTING_KEYS.POKEMON_CENTER_HOLOFOIL,
+      qualifier: "Pokémon Center",
+    },
+  );
+  assert.equal(
+    classifyReviewedTcgcsvQualifiedPrinting({
+      groupId,
+      productId: "563315",
+      productName: "Thwackey - 115 (Prerelease)",
+    }).status,
+    "unsupported",
+  );
+  assert.equal(
+    classifyReviewedTcgcsvQualifiedPrinting({
+      groupId,
+      productId: "999999",
+      productName: "Unreviewed - 999 (Staff)",
+    }).status,
+    "ordinary",
+  );
+});
+
+test("classifies the exact reviewed promo Prerelease and Staff products", () => {
+  const cases = [
+    {
+      groupId:
+        REVIEWED_TCGCSV_QUALIFIED_PRINTING_GROUPS.BLACK_WHITE_PROMOS,
+      productId: "90403",
+      productName: "Volcarona - BW40 (Prerelease)",
+      printing: TCGCSV_QUALIFIED_PRINTING_KEYS.PRERELEASE_HOLOFOIL,
+      qualifier: "Prerelease",
+    },
+    {
+      groupId:
+        REVIEWED_TCGCSV_QUALIFIED_PRINTING_GROUPS.BLACK_WHITE_PROMOS,
+      productId: "97093",
+      productName: "Volcarona - BW40 (Prerelease) [Staff]",
+      printing:
+        TCGCSV_QUALIFIED_PRINTING_KEYS.PRERELEASE_STAFF_HOLOFOIL,
+      qualifier: "Prerelease Staff",
+    },
+    {
+      groupId: REVIEWED_TCGCSV_QUALIFIED_PRINTING_GROUPS.XY_PROMOS,
+      productId: "118863",
+      productName: "Moltres (Prerelease)",
+      printing: TCGCSV_QUALIFIED_PRINTING_KEYS.PRERELEASE_HOLOFOIL,
+      qualifier: "Prerelease",
+    },
+    {
+      groupId: REVIEWED_TCGCSV_QUALIFIED_PRINTING_GROUPS.SM_PROMOS,
+      productId: "127182",
+      productName: "Shiinotic - SM10 (Prerelease) [Staff]",
+      printing:
+        TCGCSV_QUALIFIED_PRINTING_KEYS.PRERELEASE_STAFF_HOLOFOIL,
+      qualifier: "Prerelease Staff",
+    },
+    {
+      groupId: REVIEWED_TCGCSV_QUALIFIED_PRINTING_GROUPS.SWSH_PROMOS,
+      productId: "451884",
+      productName: "Sunflora - SWSH269 (Prerelease) [STAFF]",
+      printing:
+        TCGCSV_QUALIFIED_PRINTING_KEYS.PRERELEASE_STAFF_HOLOFOIL,
+      qualifier: "Prerelease Staff",
+    },
+  ];
+
+  for (const {
+    groupId,
+    productId,
+    productName,
+    printing,
+    qualifier,
+  } of cases) {
+    assert.deepEqual(
+      classifyReviewedTcgcsvQualifiedPrinting({
+        groupId,
+        productId,
+        productName,
+      }),
+      {
+        status: "qualified",
+        printing,
+        qualifier,
+      },
+    );
+  }
+});
+
+test("routes every product in the reviewed promo Prerelease manifest", () => {
+  let cardCount = 0;
+  let productCount = 0;
+
+  for (const group of promoPrereleaseRepairPlan.groups) {
+    for (const [
+      ,
+      prereleaseProductId,
+      prereleaseProductName,
+      staffProductId,
+      staffProductName,
+    ] of group.cards) {
+      cardCount += 1;
+
+      for (const [productId, productName, printing, qualifier] of [
+        [
+          prereleaseProductId,
+          prereleaseProductName,
+          TCGCSV_QUALIFIED_PRINTING_KEYS.PRERELEASE_HOLOFOIL,
+          "Prerelease",
+        ],
+        [
+          staffProductId,
+          staffProductName,
+          TCGCSV_QUALIFIED_PRINTING_KEYS.PRERELEASE_STAFF_HOLOFOIL,
+          "Prerelease Staff",
+        ],
+      ]) {
+        assert.deepEqual(
+          classifyReviewedTcgcsvQualifiedPrinting({
+            groupId: group.groupId,
+            productId,
+            productName,
+          }),
+          {
+            status: "qualified",
+            printing,
+            qualifier,
+          },
+        );
+        productCount += 1;
+      }
+    }
+  }
+
+  assert.equal(cardCount, promoPrereleaseRepairPlan.expectedCardCount);
+  assert.equal(
+    productCount,
+    promoPrereleaseRepairPlan.expectedProductCount,
+  );
+});
+
+test("fails closed on promo Prerelease identity drift", () => {
+  const groupId =
+    REVIEWED_TCGCSV_QUALIFIED_PRINTING_GROUPS.BLACK_WHITE_PROMOS;
+
+  assert.equal(
+    classifyReviewedTcgcsvQualifiedPrinting({
+      groupId,
+      productId: "90403",
+      productName: "Volcarona - BW40 (Prerelease) [Staff]",
+    }).status,
+    "unsupported",
+  );
+  assert.equal(
+    classifyReviewedTcgcsvQualifiedPrinting({
+      groupId:
+        REVIEWED_TCGCSV_QUALIFIED_PRINTING_GROUPS.XY_PROMOS,
+      productId: "90403",
+      productName: "Volcarona - BW40 (Prerelease)",
+    }).status,
+    "unsupported",
+  );
+  assert.deepEqual(
+    classifyReviewedTcgcsvQualifiedPrinting({
+      groupId,
+      productId: "999999",
+      productName: "Unreviewed - BW999 (Prerelease)",
+    }),
+    {
+      status: "ordinary",
+      printing: null,
+      qualifier: null,
+    },
+  );
+});
+
+test("validates reviewed promo Prerelease refs against Holofoil subtype evidence", () => {
+  assert.equal(
+    reviewTcgcsvQualifiedPrintingRef({
+      groupId: REVIEWED_TCGCSV_QUALIFIED_PRINTING_GROUPS.SM_PROMOS,
+      normalizedSubtypes: ["holofoil"],
+      printing:
+        TCGCSV_QUALIFIED_PRINTING_KEYS.PRERELEASE_STAFF_HOLOFOIL,
+      productId: "127182",
+      productName: "Shiinotic - SM10 (Prerelease) [Staff]",
+    }).reason,
+    null,
+  );
+  assert.equal(
+    reviewTcgcsvQualifiedPrintingRef({
+      groupId: REVIEWED_TCGCSV_QUALIFIED_PRINTING_GROUPS.SM_PROMOS,
+      normalizedSubtypes: ["reverse_holofoil"],
+      printing:
+        TCGCSV_QUALIFIED_PRINTING_KEYS.PRERELEASE_STAFF_HOLOFOIL,
+      productId: "127182",
+      productName: "Shiinotic - SM10 (Prerelease) [Staff]",
+    }).reason,
+    "qualified product prices do not use only Holofoil",
+  );
+});
+
+test("accepts reviewed qualified Normal products with Normal subtype evidence", () => {
+  assert.equal(
+    reviewTcgcsvQualifiedPrintingRef({
+      groupId:
+        REVIEWED_TCGCSV_QUALIFIED_PRINTING_GROUPS.SCARLET_VIOLET_PROMOS,
+      normalizedSubtypes: ["normal"],
+      printing:
+        TCGCSV_QUALIFIED_PRINTING_KEYS.WORLD_CHAMPIONSHIPS_STAFF_NORMAL,
+      productId: "583726",
+      productName:
+        "Paradise Resort - 150 (World Championships 2024) [Staff]",
     }).reason,
     null,
   );

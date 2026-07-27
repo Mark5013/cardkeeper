@@ -1,13 +1,33 @@
+import svPromoRepairPlan from "../data/tcgcsv-sv-promo-printing-repairs-2026-07-26.json" with {
+  type: "json",
+};
+import promoPrereleaseRepairPlan from "../data/tcgcsv-promo-prerelease-printing-repairs-2026-07-26.json" with {
+  type: "json",
+};
+
 export const TCGCSV_QUALIFIED_PRINTING_KEYS = Object.freeze({
+  COSMOS_HOLOFOIL: "cosmos_holofoil",
   HOLIDAY_CALENDAR: "holiday_calendar_holofoil",
   MASTER_BALL: "master_ball_holofoil",
+  POKEMON_CENTER_HOLOFOIL: "pokemon_center_holofoil",
   POKE_BALL: "poke_ball_holofoil",
+  PRERELEASE_HOLOFOIL: "prerelease_holofoil",
+  PRERELEASE_STAFF_HOLOFOIL: "prerelease_staff_holofoil",
+  STAFF_HOLOFOIL: "staff_holofoil",
+  WORLD_CHAMPIONSHIPS_NORMAL: "world_championships_normal",
+  WORLD_CHAMPIONSHIPS_STAFF_NORMAL:
+    "world_championships_staff_normal",
 });
 
 export const REVIEWED_TCGCSV_QUALIFIED_PRINTING_GROUPS = Object.freeze({
   BLACK_BOLT: 24325,
+  BLACK_WHITE_PROMOS: 1407,
   PRISMATIC_EVOLUTIONS: 23821,
+  SCARLET_VIOLET_PROMOS: 22872,
+  SM_PROMOS: 1861,
+  SWSH_PROMOS: 2545,
   WHITE_FLARE: 24326,
+  XY_PROMOS: 1451,
 });
 
 const QUALIFIER_TO_PRINTING = new Map([
@@ -37,6 +57,57 @@ const ALLOWED_QUALIFIERS_BY_GROUP_ID = new Map([
 
 const PHYSICAL_PRINTING_QUALIFIER_HINT =
   /\b(?:calendar|cosmos|cracked\s+ice|etched|exclusive|foil|holo|league|master\s+ball|misprint|parallel|pattern|poke\s+ball|pok[eé]mon\s+center|prerelease|pre-release|promo|reverse|staff|stamp|winner)\b/i;
+const SV_PROMO_ASSIGNMENTS_BY_PRODUCT_ID = new Map(
+  svPromoRepairPlan.assignments.map(
+    ([cardProviderId, sourcePrinting, productId, targetPrinting]) => [
+      String(productId),
+      {
+        cardProviderId,
+        sourcePrinting,
+        targetPrinting,
+      },
+    ],
+  ),
+);
+const PROMO_PRERELEASE_ASSIGNMENTS_BY_PRODUCT_ID = new Map(
+  promoPrereleaseRepairPlan.groups.flatMap((group) =>
+    group.cards.flatMap(
+      ([
+        cardProviderId,
+        prereleaseProductId,
+        prereleaseProductName,
+        staffProductId,
+        staffProductName,
+      ]) => [
+        [
+          String(prereleaseProductId),
+          {
+            cardProviderId,
+            groupId: String(group.groupId),
+            productName: prereleaseProductName,
+            sourcePrinting: group.sourcePrinting,
+            targetPrinting:
+              TCGCSV_QUALIFIED_PRINTING_KEYS.PRERELEASE_HOLOFOIL,
+          },
+        ],
+        [
+          String(staffProductId),
+          {
+            cardProviderId,
+            groupId: String(group.groupId),
+            productName: staffProductName,
+            sourcePrinting: group.sourcePrinting,
+            targetPrinting:
+              TCGCSV_QUALIFIED_PRINTING_KEYS.PRERELEASE_STAFF_HOLOFOIL,
+          },
+        ],
+      ],
+    ),
+  ),
+);
+const PROMO_PRERELEASE_GROUP_IDS = new Set(
+  promoPrereleaseRepairPlan.groups.map((group) => String(group.groupId)),
+);
 
 function getParentheticalSegments(value) {
   return Array.from(String(value ?? "").matchAll(/\(([^()]*)\)/g), (match) => ({
@@ -63,10 +134,44 @@ function unsupportedResult(qualifier = null) {
  */
 export function classifyReviewedTcgcsvQualifiedPrinting({
   groupId,
+  productId,
   productName,
 }) {
+  const normalizedGroupId = String(groupId ?? "").trim();
+  const promoPrereleaseAssignment =
+    PROMO_PRERELEASE_ASSIGNMENTS_BY_PRODUCT_ID.get(
+      String(productId ?? "").trim(),
+    );
+
+  if (promoPrereleaseAssignment) {
+    return classifyReviewedPromoPrereleasePrinting({
+      assignment: promoPrereleaseAssignment,
+      groupId: normalizedGroupId,
+      productName,
+    });
+  }
+
+  if (PROMO_PRERELEASE_GROUP_IDS.has(normalizedGroupId)) {
+    // Only the exact reviewed product IDs receive qualified identities.
+    return {
+      status: "ordinary",
+      printing: null,
+      qualifier: null,
+    };
+  }
+
+  if (
+    normalizedGroupId ===
+    String(REVIEWED_TCGCSV_QUALIFIED_PRINTING_GROUPS.SCARLET_VIOLET_PROMOS)
+  ) {
+    return classifyReviewedScarletVioletPromoPrinting({
+      productId,
+      productName,
+    });
+  }
+
   const reviewedQualifiers = ALLOWED_QUALIFIERS_BY_GROUP_ID.get(
-    String(groupId ?? "").trim(),
+    normalizedGroupId,
   );
 
   if (!reviewedQualifiers) {
@@ -121,19 +226,35 @@ export function classifyReviewedTcgcsvQualifiedPrinting({
   };
 }
 
+export function getTcgcsvQualifiedPrintingSourcePrinting(value) {
+  const printing = String(value ?? "").trim();
+
+  if (printing.endsWith("_holofoil")) return "holofoil";
+  if (printing.endsWith("_normal")) return "normal";
+
+  return printing;
+}
+
 export function reviewTcgcsvQualifiedPrintingRef({
   groupId,
   normalizedSubtypes = [],
   printing,
+  productId,
   productName,
 }) {
   const normalizedGroupId = String(groupId ?? "").trim();
   const classification = classifyReviewedTcgcsvQualifiedPrinting({
     groupId: normalizedGroupId,
+    productId,
     productName,
   });
 
-  if (!ALLOWED_QUALIFIERS_BY_GROUP_ID.has(normalizedGroupId)) {
+  if (
+    !isReviewedQualifiedPrintingIdentity({
+      groupId: normalizedGroupId,
+      productId,
+    })
+  ) {
     return {
       classification,
       reason: null,
@@ -155,14 +276,24 @@ export function reviewTcgcsvQualifiedPrintingRef({
   }
 
   const distinctSubtypes = new Set(normalizedSubtypes);
+  const sourcePrinting = getTcgcsvQualifiedPrintingSourcePrinting(
+    classification.printing,
+  );
   if (
     [...distinctSubtypes].some(
-      (normalizedSubtype) => normalizedSubtype !== "holofoil",
+      (normalizedSubtype) => normalizedSubtype !== sourcePrinting,
     )
   ) {
+    const sourcePrintingLabel =
+      sourcePrinting === "holofoil"
+        ? "Holofoil"
+        : sourcePrinting === "normal"
+          ? "Normal"
+          : sourcePrinting;
+
     return {
       classification,
-      reason: "qualified product prices do not use only Holofoil",
+      reason: `qualified product prices do not use only ${sourcePrintingLabel}`,
     };
   }
 
@@ -177,4 +308,138 @@ export function reviewTcgcsvQualifiedPrintingRef({
     classification,
     reason: null,
   };
+}
+
+function classifyReviewedPromoPrereleasePrinting({
+  assignment,
+  groupId,
+  productName,
+}) {
+  const normalizedProductName = String(productName ?? "").trim();
+  const qualifier = parseReviewedScarletVioletPromoQualifier(
+    normalizedProductName,
+  );
+
+  if (
+    groupId !== assignment.groupId ||
+    normalizedProductName !== assignment.productName ||
+    qualifier?.printing !== assignment.targetPrinting ||
+    getTcgcsvQualifiedPrintingSourcePrinting(
+      assignment.targetPrinting,
+    ) !== assignment.sourcePrinting
+  ) {
+    return unsupportedResult(qualifier?.label ?? null);
+  }
+
+  return {
+    status: "qualified",
+    printing: assignment.targetPrinting,
+    qualifier: qualifier.label,
+  };
+}
+
+function isReviewedQualifiedPrintingIdentity({ groupId, productId }) {
+  return (
+    ALLOWED_QUALIFIERS_BY_GROUP_ID.has(groupId) ||
+    PROMO_PRERELEASE_GROUP_IDS.has(groupId) ||
+    PROMO_PRERELEASE_ASSIGNMENTS_BY_PRODUCT_ID.has(
+      String(productId ?? "").trim(),
+    ) ||
+    groupId ===
+      String(
+        REVIEWED_TCGCSV_QUALIFIED_PRINTING_GROUPS.SCARLET_VIOLET_PROMOS,
+      )
+  );
+}
+
+function classifyReviewedScarletVioletPromoPrinting({
+  productId,
+  productName,
+}) {
+  const assignment = SV_PROMO_ASSIGNMENTS_BY_PRODUCT_ID.get(
+    String(productId ?? "").trim(),
+  );
+
+  // Until the full changed-build group cache is reviewed, only the exact
+  // product IDs in the checked-in repair manifest receive new identities.
+  if (!assignment) {
+    return {
+      status: "ordinary",
+      printing: null,
+      qualifier: null,
+    };
+  }
+
+  const qualifier = parseReviewedScarletVioletPromoQualifier(productName);
+
+  if (assignment.targetPrinting === assignment.sourcePrinting) {
+    return qualifier === null
+      ? {
+          status: "ordinary",
+          printing: null,
+          qualifier: null,
+        }
+      : unsupportedResult(qualifier.label);
+  }
+
+  if (
+    qualifier?.printing !== assignment.targetPrinting ||
+    getTcgcsvQualifiedPrintingSourcePrinting(
+      assignment.targetPrinting,
+    ) !== assignment.sourcePrinting
+  ) {
+    return unsupportedResult(qualifier?.label ?? null);
+  }
+
+  return {
+    status: "qualified",
+    printing: assignment.targetPrinting,
+    qualifier: qualifier.label,
+  };
+}
+
+function parseReviewedScarletVioletPromoQualifier(value) {
+  const productName = String(value ?? "").trim();
+  const cases = [
+    {
+      pattern: /\s+\(Prerelease\)\s+\[Staff\]$/i,
+      printing: TCGCSV_QUALIFIED_PRINTING_KEYS.PRERELEASE_STAFF_HOLOFOIL,
+      label: "Prerelease Staff",
+    },
+    {
+      pattern: /\s+\(Prerelease\)$/i,
+      printing: TCGCSV_QUALIFIED_PRINTING_KEYS.PRERELEASE_HOLOFOIL,
+      label: "Prerelease",
+    },
+    {
+      pattern: /\s+\(Pok[eé]mon Center(?: Exclusive)?\)$/i,
+      printing: TCGCSV_QUALIFIED_PRINTING_KEYS.POKEMON_CENTER_HOLOFOIL,
+      label: "Pokémon Center",
+    },
+    {
+      pattern: /\s+\(Cosmos Holo(?:foil)?\)$/i,
+      printing: TCGCSV_QUALIFIED_PRINTING_KEYS.COSMOS_HOLOFOIL,
+      label: "Cosmos Holofoil",
+    },
+    {
+      pattern: /\s+\(Staff\)$/i,
+      printing: TCGCSV_QUALIFIED_PRINTING_KEYS.STAFF_HOLOFOIL,
+      label: "Staff",
+    },
+    {
+      pattern: /\s+\(World Championships 2024\)\s+\[Staff\]$/i,
+      printing:
+        TCGCSV_QUALIFIED_PRINTING_KEYS.WORLD_CHAMPIONSHIPS_STAFF_NORMAL,
+      label: "World Championships 2024 Staff",
+    },
+    {
+      pattern: /\s+\(World Championships 2024\)$/i,
+      printing: TCGCSV_QUALIFIED_PRINTING_KEYS.WORLD_CHAMPIONSHIPS_NORMAL,
+      label: "World Championships 2024",
+    },
+  ];
+
+  return (
+    cases.find(({ pattern }) => pattern.test(productName)) ?? null
+  );
 }

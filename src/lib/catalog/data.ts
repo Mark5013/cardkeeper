@@ -34,6 +34,8 @@ import {
   formatCardPrinting,
   formatPrinting,
   getCardPrintingOptions,
+  getQualifiedPrintingSourcePrinting,
+  normalizePrinting,
   type CardPrintingOption,
 } from "@/lib/pokemon-tcg/printing";
 import { CARD_CONDITIONS } from "@/lib/collection/options";
@@ -169,11 +171,23 @@ async function mapCardWithCurrentPrices(row: typeof cards.$inferSelect) {
     .map((price) => price.observedAt)
     .filter((value): value is Date => value instanceof Date)
     .sort((left, right) => right.getTime() - left.getTime())[0];
+  const trustedLocalPrintings = new Set(currentPricesByPrinting.keys());
+  const replacedProviderPrintings = new Set(
+    [...trustedLocalPrintings]
+      .map(getQualifiedPrintingSourcePrinting)
+      .filter(
+        (sourcePrinting) =>
+          sourcePrinting &&
+          !trustedLocalPrintings.has(sourcePrinting),
+      ),
+  );
   const trustedPricesByProviderKey = new Map<string, PokemonTcgPrice>(
-    Object.keys(providerCard.tcgplayer?.prices ?? {}).map((printing) => [
-      printing,
-      {},
-    ]),
+    Object.keys(providerCard.tcgplayer?.prices ?? {})
+      .filter(
+        (printing) =>
+          !replacedProviderPrintings.has(normalizePrinting(printing)),
+      )
+      .map((printing) => [printing, {}]),
   );
 
   for (const [printing, price] of currentPricesByPrinting) {

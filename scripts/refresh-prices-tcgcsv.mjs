@@ -14,6 +14,7 @@ import {
 } from "./lib/tcgcsv-price-mapping.mjs";
 import {
   classifyReviewedTcgcsvQualifiedPrinting,
+  getTcgcsvQualifiedPrintingSourcePrinting,
   REVIEWED_TCGCSV_QUALIFIED_PRINTING_GROUPS,
   reviewTcgcsvQualifiedPrintingRef,
 } from "./lib/tcgcsv-qualified-printing.mjs";
@@ -172,7 +173,7 @@ try {
 function parseArgs(args) {
   const parsed = {
     dryRun: false,
-    groupId: null,
+    groupIds: null,
     maxGroups: null,
     pageDelayMs: DEFAULT_PAGE_DELAY_MS,
     maxRetries: DEFAULT_MAX_RETRIES,
@@ -184,7 +185,23 @@ function parseArgs(args) {
     if (arg === "--dry-run") {
       parsed.dryRun = true;
     } else if (arg.startsWith("--group-id=")) {
-      parsed.groupId = parsePositiveInteger(arg.slice("--group-id=".length), "group id");
+      if (parsed.groupIds !== null) {
+        throw new Error("Specify only one group ID selector.");
+      }
+      parsed.groupIds = [
+        parsePositiveInteger(
+          arg.slice("--group-id=".length),
+          "group id",
+        ),
+      ];
+    } else if (arg.startsWith("--group-ids=")) {
+      if (parsed.groupIds !== null) {
+        throw new Error("Specify only one group ID selector.");
+      }
+      parsed.groupIds = parsePositiveIntegerList(
+        arg.slice("--group-ids=".length),
+        "group IDs",
+      );
     } else if (arg.startsWith("--max-groups=")) {
       parsed.maxGroups = parsePositiveInteger(arg.slice("--max-groups=".length), "max groups");
     } else if (arg.startsWith("--page-delay-ms=")) {
@@ -214,6 +231,24 @@ function parsePositiveInteger(value, label) {
 
   if (!Number.isInteger(parsed) || parsed < 1) {
     throw new Error(`Expected ${label} to be a positive integer.`);
+  }
+
+  return parsed;
+}
+
+function parsePositiveIntegerList(value, label) {
+  const values = value.split(",").map((entry) => entry.trim());
+  const parsed = values.map((entry) =>
+    parsePositiveInteger(entry, label),
+  );
+
+  if (
+    parsed.length === 0 ||
+    new Set(parsed).size !== parsed.length
+  ) {
+    throw new Error(
+      `Expected ${label} to be a non-empty list of distinct positive integers.`,
+    );
   }
 
   return parsed;
@@ -471,6 +506,7 @@ async function preparePriceRecordsForSet({
       const qualifiedPrinting =
         classifyReviewedTcgcsvQualifiedPrinting({
           groupId: group.groupId,
+          productId: product.productId,
           productName: product.name,
         });
 
@@ -489,10 +525,13 @@ async function preparePriceRecordsForSet({
 
       if (
         qualifiedPrinting.status === "qualified" &&
-        normalizedSubtype !== "holofoil"
+        normalizedSubtype !==
+          getTcgcsvQualifiedPrintingSourcePrinting(
+            qualifiedPrinting.printing,
+          )
       ) {
         throw new Error(
-          `Expected qualified TCGCSV product ${product.productId} "${product.name ?? ""}" to use Holofoil, received "${subTypeName}".`,
+          `Expected qualified TCGCSV product ${product.productId} "${product.name ?? ""}" to use ${getTcgcsvQualifiedPrintingSourcePrinting(qualifiedPrinting.printing)}, received "${subTypeName}".`,
         );
       }
 
@@ -783,8 +822,11 @@ async function getGroupsToRefresh() {
   const groupsPayload = await fetchTcgcsvJson(`/tcgplayer/${POKEMON_CATEGORY_ID}/groups`);
   let groups = groupsPayload.results;
 
-  if (options.groupId !== null) {
-    groups = groups.filter((group) => group.groupId === options.groupId);
+  if (options.groupIds !== null) {
+    const selectedGroupIds = new Set(options.groupIds);
+    groups = groups.filter((group) =>
+      selectedGroupIds.has(group.groupId),
+    );
   }
 
   groups = groups
@@ -1201,6 +1243,7 @@ async function reconcileTcgplayerProductRefs({
         groupId,
         normalizedSubtypes: [...productPrintings],
         printing: ref.printing,
+        productId,
         productName: product.name,
       });
     const nameMatches = doesTcgcsvProductNameMatchCard({

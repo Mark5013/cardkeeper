@@ -22,9 +22,16 @@ export function formatPrinting(value: string) {
 export function formatCardPrinting(value: string, providerSetId?: string) {
   const normalizedValue = normalizePrinting(value);
   const qualifiedLabels: Record<string, string> = {
+    cosmos_holofoil: "Cosmos Holofoil",
     holiday_calendar_holofoil: "Holiday Calendar Holofoil",
     master_ball_holofoil: "Master Ball Pattern",
+    pokemon_center_holofoil: "Pokémon Center Holofoil",
     poke_ball_holofoil: "Poké Ball Pattern",
+    prerelease_holofoil: "Prerelease Holofoil",
+    prerelease_staff_holofoil: "Prerelease Staff Holofoil",
+    staff_holofoil: "Staff Holofoil",
+    world_championships_normal: "World Championships",
+    world_championships_staff_normal: "World Championships Staff",
   };
 
   if (qualifiedLabels[normalizedValue]) {
@@ -43,6 +50,15 @@ export function formatCardPrinting(value: string, providerSetId?: string) {
   }
 
   return formatPrinting(normalizedValue);
+}
+
+export function getQualifiedPrintingSourcePrinting(value: string) {
+  const printing = normalizePrinting(value);
+
+  if (printing.endsWith("_holofoil")) return "holofoil";
+  if (printing.endsWith("_normal")) return "normal";
+
+  return printing;
 }
 
 export function getCardPrintingOptions(card: PokemonTcgCard): CardPrintingOption[] {

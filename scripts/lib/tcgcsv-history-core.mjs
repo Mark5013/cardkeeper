@@ -1,16 +1,12 @@
 import { createHash } from "node:crypto";
 
-import { TCGCSV_QUALIFIED_PRINTING_KEYS } from "./tcgcsv-qualified-printing.mjs";
+import { getTcgcsvQualifiedPrintingSourcePrinting } from "./tcgcsv-qualified-printing.mjs";
 
 export const TCGCSV_SOURCE = "tcgcsv";
 export const TCGCSV_PRICE_TYPE = "market";
 export const TCGCSV_CURRENCY = "USD";
 export const TCGCSV_HISTORY_MAPPING_POLICY_VERSION =
-  "single-positive-product-ref-qualified-holofoil-v3";
-
-const TCGCSV_QUALIFIED_HOLOFOIL_PRINTINGS = new Set(
-  Object.values(TCGCSV_QUALIFIED_PRINTING_KEYS),
-);
+  "single-positive-product-ref-qualified-printing-v4";
 
 export function compareTcgcsvGroupsByPublishedOn(left, right) {
   return Date.parse(right.publishedOn ?? "") - Date.parse(left.publishedOn ?? "");
@@ -227,9 +223,7 @@ function isPositiveNumericProductId(value) {
 function getTcgcsvHistorySourcePrinting(value) {
   const printing = normalizeTcgcsvPrinting(value);
 
-  return TCGCSV_QUALIFIED_HOLOFOIL_PRINTINGS.has(printing)
-    ? "holofoil"
-    : printing;
+  return getTcgcsvQualifiedPrintingSourcePrinting(printing);
 }
 
 function getProductPrintingKey(productId, printing) {

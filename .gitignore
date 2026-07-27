@@ -22,6 +22,9 @@
 # production
 /build
 
+# generated local audit artifacts
+/.artifacts
+
 # misc
 .DS_Store
 *.pem

@@ -101,6 +101,33 @@ test("maps reviewed qualified products from archived Holofoil rows", () => {
   assert.equal(result.stats.unmatchedMarketRows, 0);
 });
 
+test("maps reviewed qualified Normal products from archived Normal rows", () => {
+  const mappings = createProductVariantMappings([
+    {
+      product_id: "583726",
+      card_variant_id: "worlds-staff-variant",
+      printing: "world_championships_staff_normal",
+    },
+  ]);
+  const result = buildHistoricalPriceRecords({
+    mappings,
+    observedAt: new Date("2024-02-08T00:00:00.000Z"),
+    priceRows: [
+      { productId: 583726, subTypeName: "Normal", marketPrice: 25 },
+      { productId: 583726, subTypeName: "Holofoil", marketPrice: 50 },
+    ],
+  });
+
+  assert.deepEqual(Array.from(mappings), [
+    ["583726:normal", ["worlds-staff-variant"]],
+  ]);
+  assert.deepEqual(
+    result.records.map((row) => [row.card_variant_id, row.amount_minor]),
+    [["worlds-staff-variant", 2500]],
+  );
+  assert.equal(result.stats.unmatchedMarketRows, 1);
+});
+
 test("requires independent Holofoil subtype evidence for qualified products", () => {
   const mappings = createProductVariantMappings([
     {
