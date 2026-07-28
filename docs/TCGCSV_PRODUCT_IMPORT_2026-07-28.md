@@ -100,7 +100,8 @@ search terms.
 The sealed catalog now groups 1,970 English products into 169 sets and 301
 Japanese products into 152 sets. Group identity is the existing TCGplayer
 `categoryId` plus `groupId`; no lossy name-only grouping or schema migration is
-required.
+required. The sealed set browser uses the same compact metadata-card treatment
+as the card set browser; product artwork is shown only after entering a set.
 
 `catalog:verify-tcgcsv-products` reported zero:
 

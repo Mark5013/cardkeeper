@@ -39,13 +39,10 @@ export type SealedCatalogSet = {
   groupId: number;
   name: string;
   languageCode: string;
-  imageUrl: string | null;
   releaseDate: string | null;
   isPresale: boolean;
   productCount: number;
-  pricedProductCount: number;
   startingPriceUsd: number | null;
-  priceUpdatedAt: string | null;
 };
 
 export type SealedCatalogSetsPage = {
@@ -93,32 +90,21 @@ function mapSet(row: {
   groupId: number;
   name: string;
   languageCode: string;
-  imageUrl: string | null;
   releaseDate: string | null;
   isPresale: boolean;
   productCount: number;
-  pricedProductCount: number;
   startingPriceMinor: number | null;
-  priceUpdatedAt: Date | string | null;
 }): SealedCatalogSet {
   return {
     categoryId: row.categoryId,
     groupId: row.groupId,
     name: row.name,
     languageCode: row.languageCode,
-    imageUrl: row.imageUrl,
     releaseDate: row.releaseDate,
     isPresale: row.isPresale,
     productCount: row.productCount,
-    pricedProductCount: row.pricedProductCount,
     startingPriceUsd:
       row.startingPriceMinor === null ? null : row.startingPriceMinor / 100,
-    priceUpdatedAt:
-      row.priceUpdatedAt instanceof Date
-        ? row.priceUpdatedAt.toISOString()
-        : row.priceUpdatedAt
-          ? new Date(row.priceUpdatedAt).toISOString()
-          : null,
   };
 }
 
@@ -174,26 +160,11 @@ export async function getSealedCatalogSetsPage(input?: {
             groupId: sealedProducts.groupId,
             name: sealedProducts.groupName,
             languageCode: sealedProducts.languageCode,
-            imageUrl: sql<string | null>`
-              (
-                array_agg(
-                  ${sealedProducts.imageUrl}
-                  order by ${sealedProducts.providerId}
-                )
-                filter (where ${sealedProducts.imageUrl} is not null)
-              )[1]
-            `,
             releaseDate: sql<string | null>`max(${sealedProducts.releaseDate})`,
             isPresale: sql<boolean>`bool_or(${sealedProducts.isPresale})`,
             productCount: sql<number>`count(*)::integer`,
-            pricedProductCount: sql<number>`
-              count(${sealedCurrentPrices.sealedProductId})::integer
-            `,
             startingPriceMinor: sql<number | null>`
               min(${sealedCurrentPrices.amountMinor})::integer
-            `,
-            priceUpdatedAt: sql<Date | null>`
-              max(${sealedCurrentPrices.observedAt})
             `,
           })
           .from(sealedProducts)
@@ -254,26 +225,11 @@ export const getSealedCatalogSet = cache(
         groupId: sealedProducts.groupId,
         name: sealedProducts.groupName,
         languageCode: sealedProducts.languageCode,
-        imageUrl: sql<string | null>`
-          (
-            array_agg(
-              ${sealedProducts.imageUrl}
-              order by ${sealedProducts.providerId}
-            )
-            filter (where ${sealedProducts.imageUrl} is not null)
-          )[1]
-        `,
         releaseDate: sql<string | null>`max(${sealedProducts.releaseDate})`,
         isPresale: sql<boolean>`bool_or(${sealedProducts.isPresale})`,
         productCount: sql<number>`count(*)::integer`,
-        pricedProductCount: sql<number>`
-          count(${sealedCurrentPrices.sealedProductId})::integer
-        `,
         startingPriceMinor: sql<number | null>`
           min(${sealedCurrentPrices.amountMinor})::integer
-        `,
-        priceUpdatedAt: sql<Date | null>`
-          max(${sealedCurrentPrices.observedAt})
         `,
       })
       .from(sealedProducts)

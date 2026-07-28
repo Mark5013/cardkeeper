@@ -1,7 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 
-import { ImageWithFallback } from "@/components/image-with-fallback";
 import { SiteHeader } from "@/components/site-header";
 import {
   getSealedCatalogSetsPage,
@@ -17,6 +16,13 @@ export const metadata: Metadata = {
 const usd = new Intl.NumberFormat("en-US", {
   style: "currency",
   currency: "USD",
+});
+
+const date = new Intl.DateTimeFormat("en-US", {
+  year: "numeric",
+  month: "short",
+  day: "numeric",
+  timeZone: "UTC",
 });
 
 function firstParam(value: string | string[] | undefined) {
@@ -39,36 +45,32 @@ function buildPageHref(input: {
 function SealedSetCard({ set }: { set: SealedCatalogSet }) {
   return (
     <Link
-      className="group overflow-hidden rounded-lg border border-[var(--line)] bg-[var(--surface)] p-5 transition duration-200 hover:-translate-y-1 hover:border-[var(--secondary)]"
+      className="group flex min-h-36 flex-col justify-between rounded-lg border border-[var(--line)] bg-[var(--surface)] p-5 transition duration-200 hover:-translate-y-1 hover:border-[var(--secondary)]"
       href={`/sealed/sets/${set.categoryId}/${set.groupId}`}
       prefetch={false}
     >
-      <div className="relative aspect-square overflow-hidden rounded-md bg-white/95">
-        <ImageWithFallback
-          src={set.imageUrl}
-          alt=""
-          fill
-          sizes="(max-width: 640px) 90vw, 280px"
-          className="object-contain p-3 transition duration-300 group-hover:scale-[1.03]"
-        />
+      <div>
+        <p className="text-xs font-semibold uppercase tracking-[0.12em] text-[var(--accent)]">
+          {set.languageCode === "ja" ? "Japanese" : "English"} · Sealed
+          {set.isPresale ? " · Presale" : ""}
+        </p>
+        <h2 className="mt-2 text-xl font-bold">{set.name}</h2>
       </div>
-      <p className="mt-5 text-xs font-semibold uppercase tracking-[0.12em] text-[var(--accent)]">
-        {set.languageCode === "ja" ? "Japanese" : "English"}
-        {set.isPresale ? " · Presale" : ""}
-      </p>
-      <h2 className="mt-2 text-lg font-bold">{set.name}</h2>
-      <p className="mt-2 text-sm text-[var(--muted)]">
-        {set.productCount.toLocaleString()}{" "}
-        {set.productCount === 1 ? "product" : "products"}
-        {set.pricedProductCount > 0
-          ? ` · ${set.pricedProductCount.toLocaleString()} priced`
-          : ""}
-      </p>
-      <p className="mt-4 font-bold text-[var(--secondary)]">
-        {set.startingPriceUsd === null
-          ? "No current market prices"
-          : `From ${usd.format(set.startingPriceUsd)}`}
-      </p>
+
+      <div className="mt-5 flex flex-wrap gap-x-4 gap-y-1 text-sm text-[var(--muted)]">
+        <span>
+          {set.productCount.toLocaleString()}{" "}
+          {set.productCount === 1 ? "product" : "products"}
+        </span>
+        {set.releaseDate ? (
+          <span>{date.format(new Date(`${set.releaseDate}T00:00:00Z`))}</span>
+        ) : null}
+        <span className="font-semibold text-[var(--secondary)]">
+          {set.startingPriceUsd === null
+            ? "No current market prices"
+            : `From ${usd.format(set.startingPriceUsd)}`}
+        </span>
+      </div>
     </Link>
   );
 }
@@ -153,7 +155,7 @@ export default async function SealedSetsPage({
         </div>
 
         {result.sets.length > 0 ? (
-          <div className="mt-6 grid gap-5 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+          <div className="mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
             {result.sets.map((set) => (
               <SealedSetCard
                 key={`${set.categoryId}:${set.groupId}`}
