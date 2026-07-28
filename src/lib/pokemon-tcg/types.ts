@@ -36,6 +36,7 @@ export type PokemonTcgCardmarketPrice = {
 
 export type PokemonTcgCard = {
   id: string;
+  languageCode?: string;
   name: string;
   number: string;
   rarity?: string;
@@ -64,6 +65,7 @@ export type PokemonTcgCard = {
   };
   set: {
     id: string;
+    languageCode?: string;
     name: string;
     series: string;
     printedTotal?: number;
@@ -93,6 +95,7 @@ export type PokemonTcgCardResponse = {
 
 export type PokemonTcgSet = {
   id: string;
+  languageCode?: string;
   name: string;
   series: string;
   printedTotal: number;
@@ -127,6 +130,7 @@ export type PokemonTcgSearchResponse = {
 
 export type CardSearchResult = {
   id: string;
+  languageCode?: string;
   name: string;
   number: string;
   rarity: string | null;
@@ -137,6 +141,7 @@ export type CardSearchResult = {
     id: string;
     name: string;
     series: string;
+    languageCode?: string;
   };
   startingPriceUsd: number | null;
   priceUpdatedAt: string | null;

@@ -85,6 +85,13 @@
       "when": 1784692800000,
       "tag": "0011_collection_quantity_history",
       "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "7",
+      "when": 1785250800000,
+      "tag": "0012_sealed_products",
+      "breakpoints": true
     }
   ]
 }

@@ -24,7 +24,16 @@ function setMatchesQuery(set: PokemonTcgSet, normalizedQuery: string) {
   if (!normalizedQuery) return true;
 
   const searchableText = normalizeSearchText(
-    [set.name, set.series, set.id, set.releaseDate].filter(Boolean).join(" "),
+    [
+      set.name,
+      set.series,
+      set.id,
+      set.releaseDate,
+      set.languageCode,
+      set.languageCode === "ja" ? "Japanese" : "English",
+    ]
+      .filter(Boolean)
+      .join(" "),
   );
 
   return normalizedQuery.split(" ").every((token) => searchableText.includes(token));
@@ -100,7 +109,7 @@ export function SetsBrowser({ sets, collectionProgress }: SetsBrowserProps) {
               <div className="flex items-start justify-between gap-4">
                 <div className="min-w-0">
                   <p className="text-xs font-semibold uppercase tracking-[0.12em] text-[var(--accent)]">
-                    {set.series}
+                    {set.languageCode === "ja" ? "Japanese" : "English"} · {set.series}
                   </p>
                   <h2 className="mt-2 text-xl font-bold">{set.name}</h2>
                 </div>

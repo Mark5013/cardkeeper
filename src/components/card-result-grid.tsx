@@ -58,6 +58,7 @@ export function CardResultGrid({
                 </div>
                 <div className="min-w-0 self-center pr-8">
                   <p className="text-xs font-semibold uppercase tracking-[0.12em] text-[var(--accent)]">
+                    {card.languageCode === "ja" ? "Japanese" : "English"} ·{" "}
                     {card.rarity ?? "Pokemon card"}
                   </p>
                   <h2 className="mt-2 text-xl font-bold text-[var(--ink)]">{card.name}</h2>

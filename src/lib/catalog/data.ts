@@ -78,6 +78,7 @@ function tokenizeSearchName(value: string) {
 function mapSet(row: typeof cardSets.$inferSelect): PokemonTcgSet {
   return {
     id: row.providerId,
+    languageCode: row.languageCode,
     name: row.name,
     series: row.series ?? "",
     printedTotal: row.printedTotal ?? row.total ?? 0,
@@ -116,6 +117,7 @@ function mapCardSearchResult(input: {
 
   return {
     id: input.card.providerId,
+    languageCode: input.card.languageCode,
     name: input.card.name,
     number: input.card.number,
     rarity: input.card.rarity ?? null,
@@ -126,6 +128,7 @@ function mapCardSearchResult(input: {
       id: input.set.providerId,
       name: input.set.name,
       series: input.set.series ?? "",
+      languageCode: input.set.languageCode,
     },
     startingPriceUsd: input.currentPriceData?.startingPriceUsd ?? null,
     priceUpdatedAt: providerCard?.tcgplayer?.updatedAt ?? null,
@@ -144,6 +147,7 @@ function mapCard(row: typeof cards.$inferSelect): PokemonTcgCard | null {
   return {
     ...providerCard,
     id: row.providerId,
+    languageCode: row.languageCode,
     name: row.name,
     number: row.number,
     rarity: row.rarity ?? providerCard.rarity,
@@ -212,6 +216,7 @@ export const getCatalogTcgplayerListingLinks = cache(async (id: string) => {
     const refs = await db
     .select({
       metadata: cardVariantExternalRefs.metadata,
+      languageCode: cards.languageCode,
       printing: cardVariants.printing,
       productId: cardVariantExternalRefs.refValue,
     })
@@ -221,9 +226,7 @@ export const getCatalogTcgplayerListingLinks = cache(async (id: string) => {
     .where(
       and(
         eq(cards.providerId, id),
-        eq(cards.languageCode, "en"),
         eq(cardVariants.condition, "unspecified"),
-        eq(cardVariants.languageCode, "en"),
         eq(cardVariantExternalRefs.source, "tcgplayer"),
         eq(cardVariantExternalRefs.refType, "product_id"),
       ),
@@ -241,7 +244,10 @@ export const getCatalogTcgplayerListingLinks = cache(async (id: string) => {
 
     return {
       canUseProviderFallback: refs.length === 0,
-      urlsByPrinting: buildTcgplayerListingUrlsByPrinting(trustedRefs),
+      urlsByPrinting: buildTcgplayerListingUrlsByPrinting(
+        trustedRefs,
+        trustedRefs[0]?.languageCode === "ja" ? "Japanese" : "English",
+      ),
     };
   } catch (error) {
     logError("catalog.local_card_tcgplayer_links.failed", error, { cardId: id });
@@ -262,7 +268,7 @@ function localSearchConditions(input: {
   normalizedNumber: string | null;
   strategy: "phrase" | "tokens";
 }) {
-  const conditions = [eq(cards.languageCode, "en"), eq(cards.isActive, true), eq(cardSets.isActive, true)];
+  const conditions = [eq(cards.isActive, true), eq(cardSets.isActive, true)];
 
   if (input.name && input.strategy === "phrase") {
     conditions.push(sql`${normalizedCardNameSql()} like ${`${normalizeSearchText(input.name)}%`}`);
@@ -381,7 +387,6 @@ async function queryLocalClosestMatches(input: {
     asc(cards.providerId),
   ];
   const whereClosest = and(
-    eq(cards.languageCode, "en"),
     eq(cards.isActive, true),
     eq(cardSets.isActive, true),
     input.normalizedNumber ? sql`lower(${cards.number}) = ${input.normalizedNumber}` : undefined,
@@ -503,7 +508,6 @@ async function getCurrentCardSearchPriceDataByCardId(cardIds: string[]) {
         .where(
           and(
             inArray(cardVariants.cardId, uniqueCardIds),
-            eq(cardVariants.languageCode, "en"),
             eq(cardVariants.condition, "unspecified"),
             hasOneValidTcgplayerProductRef(),
           ),
@@ -569,7 +573,6 @@ function currentMarketPriceByCardSubquery() {
     .innerJoin(currentPrices, eq(currentPrices.cardVariantId, cardVariants.id))
     .where(
       and(
-        eq(cardVariants.languageCode, "en"),
         eq(currentPrices.source, "tcgcsv"),
         eq(currentPrices.priceType, "market"),
         eq(currentPrices.currency, "USD"),
@@ -597,9 +600,7 @@ function currentMarketPriceBySetCardSubquery(setProviderId: string) {
       and(
         eq(cardSets.providerId, setProviderId),
         eq(cardSets.isActive, true),
-        eq(cards.languageCode, "en"),
         eq(cards.isActive, true),
-        eq(cardVariants.languageCode, "en"),
         eq(currentPrices.source, "tcgcsv"),
         eq(currentPrices.priceType, "market"),
         eq(currentPrices.currency, "USD"),
@@ -639,7 +640,6 @@ async function getCurrentPricesForCardId(cardId: string) {
       and(
         eq(cardVariants.cardId, cardId),
         eq(cardVariants.condition, "unspecified"),
-        eq(cardVariants.languageCode, "en"),
         hasOneValidTcgplayerProductRef(),
       ),
     );
@@ -680,7 +680,7 @@ export const getCatalogPokemonSets = cache(async () => {
     const localSets = await db
       .select()
       .from(cardSets)
-      .where(and(eq(cardSets.languageCode, "en"), eq(cardSets.isActive, true)))
+      .where(eq(cardSets.isActive, true))
       .orderBy(sql`${cardSets.releaseDate} desc nulls last`, asc(cardSets.name));
 
     if (localSets.length > 0) {
@@ -698,7 +698,7 @@ export const getCatalogPokemonSet = cache(async (id: string) => {
     const [localSet] = await db
       .select()
       .from(cardSets)
-      .where(and(eq(cardSets.providerId, id), eq(cardSets.languageCode, "en"), eq(cardSets.isActive, true)))
+      .where(and(eq(cardSets.providerId, id), eq(cardSets.isActive, true)))
       .limit(1);
 
     if (localSet) {
@@ -725,7 +725,6 @@ export const getCatalogPokemonCardsBySetPage = cache(async (input: {
   try {
     const whereSet = and(
       eq(cardSets.providerId, input.setId),
-      eq(cards.languageCode, "en"),
       eq(cards.isActive, true),
       eq(cardSets.isActive, true),
     );
@@ -824,7 +823,7 @@ export const getCatalogPokemonCardWithSource = cache(async (id: string) => {
     const [localCard] = await db
       .select()
       .from(cards)
-      .where(and(eq(cards.providerId, id), eq(cards.languageCode, "en"), eq(cards.isActive, true)))
+      .where(and(eq(cards.providerId, id), eq(cards.isActive, true)))
       .limit(1);
 
     if (localCard) {
@@ -847,8 +846,6 @@ export const getCatalogPokemonCardPriceHistory = cache(async (id: string, provid
   try {
     const baseFilters = [
       eq(cards.providerId, id),
-      eq(cards.languageCode, "en"),
-      eq(cardVariants.languageCode, "en"),
       eq(cardVariants.condition, "unspecified"),
       hasOneValidTcgplayerProductRef(),
     ];

@@ -1,12 +1,14 @@
 # Cardkeeper
 
-Cardkeeper is a Pokemon card collection manager built with Next.js, TypeScript, PostgreSQL, Supabase, and Drizzle. The local catalog is English-only and imported from the Pokemon TCG API, while the schema keeps card language explicit for future catalogs.
+Cardkeeper is a Pokemon card collection manager built with Next.js, TypeScript, PostgreSQL, Supabase, and Drizzle. English cards come from the Pokemon TCG API. Japanese cards and English/Japanese sealed products come from TCGCSV's TCGplayer catalogs.
 
 ## What works
 
 - Responsive project landing page
 - Server-only Pokemon TCG API integration for catalog imports and fallback reads
 - Local PostgreSQL-backed card and set browsing
+- English and Japanese card browsing with explicit language identities
+- Dedicated English and Japanese sealed-product catalog and detail pages
 - Single-field card search supporting queries such as `Pikachu 58`
 - Debounced card suggestions with keyboard navigation
 - Exact-match detection and ranked closest-match fallbacks
@@ -53,6 +55,7 @@ Add secrets to `.env.local`:
 POKEMON_TCG_API_KEY=your_key_here
 DATABASE_URL=postgresql://user:password@host:5432/database
 DATABASE_MAX_CONNECTIONS=1
+TCGCSV_USER_AGENT=Cardkeeper/0.1.0 (+https://github.com/Mark5013/cardkeeper)
 ```
 
 Never prefix these values with `NEXT_PUBLIC_`; both must remain server-only.
@@ -77,6 +80,21 @@ Import or refresh the local English Pokemon TCG catalog:
 ```bash
 npm run catalog:import
 ```
+
+Dry-run or apply the TCGCSV product catalogs. This imports Japanese cards plus
+English and Japanese sealed products, along with their current TCGplayer prices:
+
+```bash
+npm run catalog:import-tcgcsv-products
+npm run catalog:import-tcgcsv-products -- --apply
+npm run catalog:verify-tcgcsv-products
+```
+
+The importer checks `last-updated.txt`, uses the identifiable configured User-Agent,
+spaces requests by at least 250 ms, and fails before fetching groups when its
+request budget could approach 10,000. It is dry-run by default. Scheduled runs use
+`--apply --skip-if-current`, so an unchanged TCGCSV build costs only the marker
+request.
 
 Refresh TCGCSV-backed TCGplayer prices into `current_prices` and compressed `price_series` history:
 
@@ -158,6 +176,8 @@ npm run db:test-rls
 
 - `card_sets` and `cards` hold catalog records.
 - `card_variants` separates finish, condition, and language.
+- `sealed_products` holds first-class physical sealed identities separately from cards.
+- `sealed_current_prices` and `sealed_price_series` hold current and forward-looking sealed price history.
 - `collection_items` stores a user's quantity for a specific variant.
 - `current_prices` stores the latest value by source and price type.
 - `price_series` stores changed historical observations as aligned date and integer-amount arrays, one row per variant/source/type/currency series.

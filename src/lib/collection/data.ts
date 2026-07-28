@@ -339,7 +339,6 @@ async function getCurrentMarketPricesByVariantId(variants: (typeof cardVariants.
             eq(currentPrices.priceType, "market"),
             eq(currentPrices.currency, "USD"),
             eq(cardVariants.condition, "unspecified"),
-            eq(cardVariants.languageCode, "en"),
             inArray(cardVariants.cardId, uniqueCardIds),
             inArray(cardVariants.printing, uniquePrintings),
             hasOneValidTcgplayerProductRef(),
@@ -431,7 +430,6 @@ export async function getCurrentCollectionValueHistory(): Promise<CollectionValu
           .where(
             and(
               eq(cardVariants.condition, "unspecified"),
-              eq(cardVariants.languageCode, "en"),
               inArray(cardVariants.cardId, uniqueCardIds),
               inArray(cardVariants.printing, uniquePrintings),
               hasOneValidTcgplayerProductRef(),
@@ -558,7 +556,6 @@ export async function getOwnedCardVariants(
     .from("cards")
     .select("id")
     .eq("provider_id", providerCardId)
-    .eq("language_code", "en")
     .maybeSingle();
 
   if (cardError) {

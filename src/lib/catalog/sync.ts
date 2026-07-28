@@ -16,8 +16,6 @@ type EnsureCardVariantInput = {
   condition: CardCondition;
 };
 
-const languageCode = "en";
-
 export async function ensureCardVariant(input: EnsureCardVariantInput) {
   const startedAt = performance.now();
   const resolution = await resolveCardVariant({
@@ -41,6 +39,7 @@ export async function ensureCardVariant(input: EnsureCardVariantInput) {
 }
 
 async function findLocalCardAndVariant(input: EnsureCardVariantInput) {
+  const languageCode = input.card.languageCode ?? "en";
   const [local] = await db
     .select({
       cardId: cards.id,
@@ -69,6 +68,7 @@ async function findLocalCardAndVariant(input: EnsureCardVariantInput) {
 }
 
 async function insertVariant(cardId: string, input: EnsureCardVariantInput) {
+  const languageCode = input.card.languageCode ?? "en";
   const [variant] = await db
     .insert(cardVariants)
     .values({
@@ -91,6 +91,7 @@ async function insertVariant(cardId: string, input: EnsureCardVariantInput) {
 }
 
 async function findVariant(cardId: string, input: EnsureCardVariantInput) {
+  const languageCode = input.card.languageCode ?? "en";
   const [variant] = await db
     .select({ id: cardVariants.id })
     .from(cardVariants)
@@ -110,6 +111,7 @@ async function findVariant(cardId: string, input: EnsureCardVariantInput) {
 async function createCatalogCardAndVariant(input: EnsureCardVariantInput) {
   const now = new Date();
   const providerUpdatedAt = parseProviderTimestamp(input.card.set.updatedAt);
+  const languageCode = input.card.languageCode ?? input.card.set.languageCode ?? "en";
 
   return db.transaction(async (transaction) => {
     const [set] = await transaction

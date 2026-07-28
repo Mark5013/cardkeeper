@@ -76,6 +76,54 @@ try {
           (${card.id}, 'reverse_holofoil', 'near_mint', 'en')
         returning id
       `;
+      const [sealedProduct] = await sql`
+        insert into public.sealed_products (
+          provider_id,
+          category_id,
+          group_id,
+          group_name,
+          language_code,
+          name
+        )
+        values (
+          ${fixtureKey},
+          3,
+          1,
+          'RLS Test Group',
+          'en',
+          'RLS Test Sealed Product'
+        )
+        returning id
+      `;
+      await sql`
+        insert into public.sealed_current_prices (
+          sealed_product_id,
+          source,
+          price_type,
+          currency,
+          amount_minor,
+          observed_at
+        )
+        values (${sealedProduct.id}, 'tcgcsv', 'market', 'USD', 1000, now())
+      `;
+      await sql`
+        insert into public.sealed_price_series (
+          sealed_product_id,
+          source,
+          price_type,
+          currency,
+          observed_on,
+          amounts_minor
+        )
+        values (
+          ${sealedProduct.id},
+          'tcgcsv',
+          'market',
+          'USD',
+          array[current_date],
+          array[1000]
+        )
+      `;
       await sql`
         insert into public.collection_items (user_id, card_variant_id, quantity)
         values (${owner.user_id}, ${variants[0].id}, 1)
@@ -100,6 +148,18 @@ try {
       const authenticatedCatalog = await sql`
         select id from public.cards where id = ${card.id}
       `;
+      const authenticatedSealedCatalog = await sql`
+        select
+          product.id,
+          current_price.amount_minor,
+          series.amounts_minor
+        from public.sealed_products as product
+        inner join public.sealed_current_prices as current_price
+          on current_price.sealed_product_id = product.id
+        inner join public.sealed_price_series as series
+          on series.sealed_product_id = product.id
+        where product.id = ${sealedProduct.id}
+      `;
       const ownerQuantityHistory = await sql`
         select quantity
         from public.collection_quantity_history
@@ -121,6 +181,11 @@ try {
       check("Owner can read trigger-recorded quantity history", ownerQuantityHistory[0]?.quantity === 2);
       check("Owner cannot write quantity history directly", directHistoryInsertDenied);
       check("Authenticated users can read catalog cards", authenticatedCatalog.length === 1);
+      check(
+        "Authenticated users can read sealed products and prices",
+        Number(authenticatedSealedCatalog[0]?.amount_minor) === 1000 &&
+          authenticatedSealedCatalog[0]?.amounts_minor?.[0] === 1000,
+      );
 
       await assumeRole(sql, "authenticated", intruderId);
       const intruderCollection = await sql`
@@ -155,6 +220,9 @@ try {
       const anonymousCatalog = await sql`
         select id from public.cards where id = ${card.id}
       `;
+      const anonymousSealedCatalog = await sql`
+        select id from public.sealed_products where id = ${sealedProduct.id}
+      `;
       const anonymousCollectionDenied = await expectDenied(sql, (savepoint) => savepoint`
         select id from public.collection_items limit 1
       `);
@@ -165,11 +233,31 @@ try {
         insert into public.card_sets (provider_id, language_code, name)
         values (${`${fixtureKey}-forbidden`}, 'en', 'Forbidden Set')
       `);
+      const anonymousSealedWriteDenied = await expectDenied(sql, (savepoint) => savepoint`
+        insert into public.sealed_products (
+          provider_id,
+          category_id,
+          group_id,
+          group_name,
+          language_code,
+          name
+        )
+        values (
+          ${`${fixtureKey}-sealed-forbidden`},
+          3,
+          1,
+          'Forbidden Group',
+          'en',
+          'Forbidden Sealed Product'
+        )
+      `);
 
       check("Anonymous visitors can read catalog cards", anonymousCatalog.length === 1);
+      check("Anonymous visitors can read sealed products", anonymousSealedCatalog.length === 1);
       check("Anonymous visitors cannot read collections", anonymousCollectionDenied);
       check("Anonymous visitors cannot read quantity history", anonymousQuantityHistoryDenied);
       check("Anonymous visitors cannot modify the catalog", anonymousCatalogWriteDenied);
+      check("Anonymous visitors cannot modify sealed products", anonymousSealedWriteDenied);
 
       await sql`reset role`;
       throw rollbackSignal;

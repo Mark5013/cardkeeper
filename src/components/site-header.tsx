@@ -21,6 +21,9 @@ export async function SiteHeader() {
         <Link className="hidden rounded-lg px-3 py-2 text-[var(--muted)] hover:text-[var(--secondary)] sm:inline-flex" href="/sets">
           Search by set
         </Link>
+        <Link className="hidden rounded-lg px-3 py-2 text-[var(--muted)] hover:text-[var(--secondary)] md:inline-flex" href="/sealed">
+          Sealed
+        </Link>
         {user ? (
           <>
             <Link className="hidden rounded-lg px-3 py-2 text-[var(--muted)] hover:text-[var(--secondary)] sm:inline-flex" href="/collection">

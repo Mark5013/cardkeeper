@@ -4,7 +4,7 @@ export type TcgplayerPrintingProductRef = {
 };
 
 const TCGPLAYER_PRODUCT_URL_PREFIX = "https://www.tcgplayer.com/product/";
-const TCGPLAYER_PRODUCT_URL_SUFFIX = "/-?Language=English";
+type TcgplayerLanguage = "English" | "Japanese";
 
 function normalizeProductId(productId: TcgplayerPrintingProductRef["productId"]) {
   const rawProductId =
@@ -32,6 +32,7 @@ function normalizeProductId(productId: TcgplayerPrintingProductRef["productId"])
  */
 export function buildTcgplayerListingUrlsByPrinting(
   refs: readonly TcgplayerPrintingProductRef[],
+  language: TcgplayerLanguage = "English",
 ): Record<string, string> {
   const productIdsByPrinting = new Map<string, Set<string>>();
   const invalidPrintings = new Set<string>();
@@ -64,7 +65,7 @@ export function buildTcgplayerListingUrlsByPrinting(
         const [productId] = productIds;
         return [
           printing,
-          `${TCGPLAYER_PRODUCT_URL_PREFIX}${productId}${TCGPLAYER_PRODUCT_URL_SUFFIX}`,
+          `${TCGPLAYER_PRODUCT_URL_PREFIX}${productId}/-?Language=${language}`,
         ];
       }),
   );

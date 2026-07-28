@@ -799,14 +799,20 @@ function getParentheticalParts(value) {
 
 async function resetSourceRows() {
   const deletedCurrentPrices = await sql`
-    delete from current_prices
-    where source = ${SOURCE}
-    returning id
+    delete from current_prices as price
+    using card_variants as variant
+    where price.source = ${SOURCE}
+      and price.card_variant_id = variant.id
+      and variant.language_code = 'en'
+    returning price.id
   `;
   const deletedPriceSeries = await sql`
-    delete from price_series
-    where source = ${SOURCE}
-    returning card_variant_id
+    delete from price_series as series
+    using card_variants as variant
+    where series.source = ${SOURCE}
+      and series.card_variant_id = variant.id
+      and variant.language_code = 'en'
+    returning series.card_variant_id
   `;
 
   console.log(
@@ -816,9 +822,12 @@ async function resetSourceRows() {
 
 async function getLatestCurrentPriceObservedAt() {
   const [row] = await sql`
-    select max(observed_at) as observed_at
-    from current_prices
-    where source = ${SOURCE}
+    select max(price.observed_at) as observed_at
+    from current_prices as price
+    inner join card_variants as variant
+      on variant.id = price.card_variant_id
+    where price.source = ${SOURCE}
+      and variant.language_code = 'en'
   `;
 
   return row?.observed_at ? new Date(row.observed_at) : null;

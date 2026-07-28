@@ -392,6 +392,18 @@ The database-first investigation sequence is documented in
 5. Re-run the full English audit after those modeling changes, then begin
    Japanese-card and sealed-product ingestion.
 
+## JP and sealed expansion completed — 2026-07-28
+
+Items 3 through 5 above are complete. The application now has language-aware
+card, variant, price, collection, and marketplace-link resolution; sealed
+products have their own catalog and UI path; and the production database
+contains English sealed products plus Japanese cards and sealed products.
+
+The zero-request English audit remained unchanged after the expansion. Full
+import counts, identity rules, integrity checks, and operations are documented
+in
+[`TCGCSV_PRODUCT_IMPORT_2026-07-28.md`](./TCGCSV_PRODUCT_IMPORT_2026-07-28.md).
+
 ## Operations
 
 TCGCSV asks consumers to identify requests, rate-limit them, and avoid unnecessary full syncs; see the [TCGCSV docs](https://tcgcsv.com/docs).

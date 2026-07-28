@@ -1,0 +1,40 @@
+name: Import TCGCSV products
+
+on:
+  schedule:
+    - cron: "7 23 * * *"
+  workflow_dispatch:
+
+concurrency:
+  group: import-tcgcsv-products
+  cancel-in-progress: false
+
+jobs:
+  import:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+      TCGCSV_USER_AGENT: Cardkeeper/0.1.0 (+https://github.com/Mark5013/cardkeeper)
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Apply product catalog migrations
+        run: npm run db:migrate
+
+      - name: Import English sealed and Japanese card and sealed products
+        run: npm run catalog:import-tcgcsv-products -- --apply --skip-if-current
+
+      - name: Verify imported product identities
+        run: npm run catalog:verify-tcgcsv-products

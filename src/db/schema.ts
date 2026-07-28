@@ -148,6 +148,92 @@ export const cardVariantExternalRefs = pgTable(
   ],
 );
 
+export const sealedProducts = pgTable(
+  "sealed_products",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    providerId: text("provider_id").notNull(),
+    categoryId: integer("category_id").notNull(),
+    groupId: integer("group_id").notNull(),
+    groupName: text("group_name").notNull(),
+    languageCode: varchar("language_code", { length: 10 }).notNull(),
+    name: text("name").notNull(),
+    imageUrl: text("image_url"),
+    tcgplayerUrl: text("tcgplayer_url"),
+    releaseDate: date("release_date"),
+    isPresale: boolean("is_presale").default(false).notNull(),
+    lastImportedAt: timestamp("last_imported_at", { withTimezone: true }),
+    isActive: boolean("is_active").default(true).notNull(),
+    providerData: jsonb("provider_data").$type<Record<string, unknown>>(),
+    ...timestamps,
+  },
+  (table) => [
+    uniqueIndex("sealed_products_category_provider_idx").on(
+      table.categoryId,
+      table.providerId,
+    ),
+    index("sealed_products_name_idx").on(table.name),
+    index("sealed_products_group_idx").on(table.categoryId, table.groupId),
+    index("sealed_products_language_active_idx").on(table.languageCode, table.isActive),
+    check("sealed_products_category_positive", sql`${table.categoryId} > 0`),
+    check("sealed_products_group_positive", sql`${table.groupId} > 0`),
+  ],
+);
+
+export const sealedCurrentPrices = pgTable(
+  "sealed_current_prices",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    sealedProductId: uuid("sealed_product_id")
+      .notNull()
+      .references(() => sealedProducts.id, { onDelete: "cascade" }),
+    source: text("source").notNull(),
+    priceType: text("price_type").default("market").notNull(),
+    currency: varchar("currency", { length: 3 }).notNull(),
+    amountMinor: bigint("amount_minor", { mode: "number" }).notNull(),
+    observedAt: timestamp("observed_at", { withTimezone: true }).notNull(),
+    ...timestamps,
+  },
+  (table) => [
+    uniqueIndex("sealed_current_prices_identity_idx").on(
+      table.sealedProductId,
+      table.source,
+      table.priceType,
+      table.currency,
+    ),
+    index("sealed_current_prices_product_idx").on(table.sealedProductId),
+    check("sealed_current_prices_amount_nonnegative", sql`${table.amountMinor} >= 0`),
+  ],
+);
+
+export const sealedPriceSeries = pgTable(
+  "sealed_price_series",
+  {
+    sealedProductId: uuid("sealed_product_id")
+      .notNull()
+      .references(() => sealedProducts.id, { onDelete: "cascade" }),
+    source: text("source").notNull(),
+    priceType: text("price_type").default("market").notNull(),
+    currency: varchar("currency", { length: 3 }).notNull(),
+    observedOn: date("observed_on").array().default(sql`'{}'::date[]`).notNull(),
+    amountsMinor: integer("amounts_minor").array().default(sql`'{}'::integer[]`).notNull(),
+    ...timestamps,
+  },
+  (table) => [
+    primaryKey({
+      name: "sealed_price_series_pkey",
+      columns: [table.sealedProductId, table.source, table.priceType, table.currency],
+    }),
+    check("sealed_price_series_source_format_check", sql`${table.source} ~ '^[a-z0-9_]{1,60}$'`),
+    check("sealed_price_series_price_type_format_check", sql`${table.priceType} ~ '^[a-z0-9_]{1,60}$'`),
+    check(
+      "sealed_price_series_cardinality_check",
+      sql`cardinality(${table.observedOn}) = cardinality(${table.amountsMinor})`,
+    ),
+    check("sealed_price_series_amounts_nonnegative", sql`0 <= all(${table.amountsMinor})`),
+  ],
+);
+
 export const collectionItems = pgTable(
   "collection_items",
   {

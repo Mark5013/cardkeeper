@@ -26,6 +26,12 @@ mappings. Lokix `sv7-16` Holofoil is the only structural exception: catalog
 provider data advertises Holofoil, but exact TCGCSV product `567242` publishes
 only Normal and Reverse Holofoil.
 
+The subsequent English sealed and Japanese card/sealed expansion completed on
+2026-07-28 without changing this English baseline. See
+[`TCGCSV_PRODUCT_IMPORT_2026-07-28.md`](./TCGCSV_PRODUCT_IMPORT_2026-07-28.md)
+for the imported counts, identity model, verifier output, and scheduled
+operations.
+
 ## Likely causes to test
 
 1. **Different group or set names.** A local promo catalog may be split across

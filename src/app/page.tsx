@@ -51,8 +51,17 @@ export default async function Home() {
             Know every card.<br />Know what it&apos;s worth.
           </h1>
           <p className="mt-7 max-w-2xl text-pretty text-lg leading-8 text-[var(--muted)] sm:text-xl">
-            Collect smarter. Explore cards, track prices, and manage your collection in one place.
+            Collect smarter. Explore English and Japanese cards, browse sealed
+            products, track prices, and manage your collection in one place.
           </p>
+          <div className="mt-6 flex flex-wrap gap-3">
+            <Link className="pagination-link" href="/sets">
+              Browse card sets
+            </Link>
+            <Link className="pagination-link" href="/sealed">
+              Browse sealed products
+            </Link>
+          </div>
         </div>
 
         <div className="mt-12">

@@ -29,6 +29,18 @@ test("allows duplicate refs that identify the same product", () => {
   );
 });
 
+test("builds Japanese marketplace URLs for Japanese variants", () => {
+  assert.deepEqual(
+    buildTcgplayerListingUrlsByPrinting(
+      [{ printing: "normal", productId: "674320" }],
+      "Japanese",
+    ),
+    {
+      normal: "https://www.tcgplayer.com/product/674320/-?Language=Japanese",
+    },
+  );
+});
+
 test("omits an ambiguous printing while preserving unambiguous printings", () => {
   assert.deepEqual(
     buildTcgplayerListingUrlsByPrinting([

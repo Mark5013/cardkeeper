@@ -495,6 +495,8 @@ async function restoreLegacyPricePoints(from) {
       baseline.amount_minor,
       ${baselineObservedAt}::timestamptz
     from price_series series
+    inner join card_variants variant
+      on variant.id = series.card_variant_id
     cross join lateral (
       select point.amount_minor
       from unnest(series.observed_on, series.amounts_minor)
@@ -506,6 +508,7 @@ async function restoreLegacyPricePoints(from) {
     where series.source = 'tcgcsv'
       and series.price_type = 'market'
       and series.currency = 'USD'
+      and variant.language_code = 'en'
     on conflict (card_variant_id, source, price_type, currency, observed_at) do nothing
     returning id
   `;
@@ -526,11 +529,14 @@ async function restoreLegacyPricePoints(from) {
       point.amount_minor,
       point.observed_on::timestamp at time zone 'UTC'
     from price_series series
+    inner join card_variants variant
+      on variant.id = series.card_variant_id
     cross join lateral unnest(series.observed_on, series.amounts_minor)
       with ordinality as point(observed_on, amount_minor, ordinal)
     where series.source = 'tcgcsv'
       and series.price_type = 'market'
       and series.currency = 'USD'
+      and variant.language_code = 'en'
       and point.observed_on > ${from}::date
       and point.observed_on <= ${options.to}::date
     on conflict (card_variant_id, source, price_type, currency, observed_at) do nothing
@@ -601,17 +607,23 @@ async function verifyUploadedPriceSeries(expected, database = sql) {
         where cardinality(observed_on) <> cardinality(amounts_minor)
           or cardinality(observed_on) = 0
       )::integer as malformed
-    from price_series
-    where source = 'tcgcsv'
-      and price_type = 'market'
-      and currency = 'USD'
+    from price_series series
+    inner join card_variants variant
+      on variant.id = series.card_variant_id
+    where series.source = 'tcgcsv'
+      and series.price_type = 'market'
+      and series.currency = 'USD'
+      and variant.language_code = 'en'
   `;
   const [ordering] = await database`
     select count(*)::integer as invalid
     from price_series series
+    inner join card_variants variant
+      on variant.id = series.card_variant_id
     where series.source = 'tcgcsv'
       and series.price_type = 'market'
       and series.currency = 'USD'
+      and variant.language_code = 'en'
       and exists (
         select 1
         from generate_subscripts(series.observed_on, 1) as indices(idx)
@@ -627,9 +639,12 @@ async function verifyUploadedPriceSeries(expected, database = sql) {
       and prices.source = series.source
       and prices.price_type = series.price_type
       and prices.currency = series.currency
+    inner join card_variants variant
+      on variant.id = series.card_variant_id
     where series.source = 'tcgcsv'
       and series.price_type = 'market'
       and series.currency = 'USD'
+      and variant.language_code = 'en'
       and prices.observed_at < ${`${addUtcDays(options.to, 1)}T00:00:00.000Z`}::timestamptz
       and series.amounts_minor[cardinality(series.amounts_minor)] <> prices.amount_minor
   `;
@@ -1066,22 +1081,28 @@ async function uploadPriceSeries(expected, mappingFingerprint) {
     );
 
     const deletedSeries = await transaction`
-      delete from price_series
-      where source = 'tcgcsv'
-        and price_type = 'market'
-        and currency = 'USD'
-      returning card_variant_id
+      delete from price_series as series
+      using card_variants as variant
+      where series.card_variant_id = variant.id
+        and series.source = 'tcgcsv'
+        and series.price_type = 'market'
+        and series.currency = 'USD'
+        and variant.language_code = 'en'
+      returning series.card_variant_id
     `;
     const currentVariantIds = options.syncCurrent
       ? new Set(
           (
             await transaction`
-              select card_variant_id
-              from current_prices
-              where source = 'tcgcsv'
-                and price_type = 'market'
-                and currency = 'USD'
-                and observed_at < ${`${addUtcDays(options.to, 1)}T00:00:00.000Z`}::timestamptz
+              select price.card_variant_id
+              from current_prices as price
+              inner join card_variants as variant
+                on variant.id = price.card_variant_id
+              where price.source = 'tcgcsv'
+                and price.price_type = 'market'
+                and price.currency = 'USD'
+                and price.observed_at < ${`${addUtcDays(options.to, 1)}T00:00:00.000Z`}::timestamptz
+                and variant.language_code = 'en'
             `
           ).map((row) => String(row.card_variant_id)),
         )

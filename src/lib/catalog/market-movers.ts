@@ -80,11 +80,14 @@ const getCachedWeeklyMarketMovers = unstable_cache(
       () =>
         db.execute<WeeklyMarketMoverRow>(sql`
           with anchor as (
-            select max((observed_at at time zone 'UTC')::date) as current_on
-            from current_prices
-            where source = 'tcgcsv'
-              and price_type = 'market'
-              and currency = 'USD'
+            select max((anchor_price.observed_at at time zone 'UTC')::date) as current_on
+            from current_prices anchor_price
+            inner join card_variants anchor_variant
+              on anchor_variant.id = anchor_price.card_variant_id
+            where anchor_price.source = 'tcgcsv'
+              and anchor_price.price_type = 'market'
+              and anchor_price.currency = 'USD'
+              and anchor_variant.language_code = 'en'
           ),
           scored as (
             select

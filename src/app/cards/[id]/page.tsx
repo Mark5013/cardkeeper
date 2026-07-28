@@ -120,7 +120,14 @@ export default async function CardDetailPage({
   const details = [
     ["Set", card.set.name],
     ["Series", card.set.series],
-    ["Card number", `#${card.number}${card.set.printedTotal ? ` / ${card.set.printedTotal}` : ""}`],
+    [
+      "Card number",
+      `#${card.number}${
+        card.set.printedTotal && !card.number.includes("/")
+          ? ` / ${card.set.printedTotal}`
+          : ""
+      }`,
+    ],
     ["Rarity", card.rarity],
     ["Illustrator", card.artist],
     ["Release date", card.set.releaseDate],
@@ -203,7 +210,10 @@ export default async function CardDetailPage({
           </div>
 
           <div className="min-w-0">
-            <p className="eyebrow">{card.supertype ?? "Pokemon card"}</p>
+            <p className="eyebrow">
+              {card.languageCode === "ja" ? "Japanese" : "English"} ·{" "}
+              {card.supertype ?? "Pokemon card"}
+            </p>
             <h1 className="mt-4 text-5xl font-bold sm:text-6xl">{card.name}</h1>
             <p className="mt-4 text-lg text-[var(--muted)]">
               {card.set.name} · #{card.number}{card.rarity ? ` · ${card.rarity}` : ""}
