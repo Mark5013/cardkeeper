@@ -14,11 +14,6 @@ const languageOptions = [
   { value: "ja", label: "Japanese" },
 ] as const;
 
-const usd = new Intl.NumberFormat("en-US", {
-  style: "currency",
-  currency: "USD",
-});
-
 const date = new Intl.DateTimeFormat("en-US", {
   year: "numeric",
   month: "short",
@@ -78,11 +73,6 @@ function SealedSetCard({ set }: { set: SealedCatalogSet }) {
         {set.releaseDate ? (
           <span>{date.format(new Date(`${set.releaseDate}T00:00:00Z`))}</span>
         ) : null}
-        <span className="font-semibold text-[var(--secondary)]">
-          {set.startingPriceUsd === null
-            ? "No current market prices"
-            : `From ${usd.format(set.startingPriceUsd)}`}
-        </span>
       </div>
     </Link>
   );

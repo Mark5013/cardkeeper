@@ -47,6 +47,7 @@ test("sealed sets scroll continuously and filter with the styled language menu",
   await expect
     .poll(async () => (await englishSets.count()) + (await japaneseSets.count()))
     .toBeGreaterThan(60);
+  await expect(englishSets.first()).not.toContainText(/From \$|market prices/i);
   await expect(
     page.locator('nav[aria-label="Sealed set pages"]'),
   ).toHaveCount(0);

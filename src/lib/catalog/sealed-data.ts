@@ -42,6 +42,9 @@ export type SealedCatalogSet = {
   releaseDate: string | null;
   isPresale: boolean;
   productCount: number;
+};
+
+export type SealedCatalogSetDetail = SealedCatalogSet & {
   startingPriceUsd: number | null;
 };
 
@@ -85,7 +88,6 @@ function mapSet(row: {
   releaseDate: string | null;
   isPresale: boolean;
   productCount: number;
-  startingPriceMinor: number | null;
 }): SealedCatalogSet {
   return {
     categoryId: row.categoryId,
@@ -95,6 +97,16 @@ function mapSet(row: {
     releaseDate: row.releaseDate,
     isPresale: row.isPresale,
     productCount: row.productCount,
+  };
+}
+
+function mapSetDetail(
+  row: Parameters<typeof mapSet>[0] & {
+    startingPriceMinor: number | null;
+  },
+): SealedCatalogSetDetail {
+  return {
+    ...mapSet(row),
     startingPriceUsd:
       row.startingPriceMinor === null ? null : row.startingPriceMinor / 100,
   };
@@ -113,20 +125,8 @@ export const getSealedCatalogSets = cache(async () => {
           releaseDate: sql<string | null>`max(${sealedProducts.releaseDate})`,
           isPresale: sql<boolean>`bool_or(${sealedProducts.isPresale})`,
           productCount: sql<number>`count(*)::integer`,
-          startingPriceMinor: sql<number | null>`
-            min(${sealedCurrentPrices.amountMinor})::integer
-          `,
         })
         .from(sealedProducts)
-        .leftJoin(
-          sealedCurrentPrices,
-          and(
-            eq(sealedCurrentPrices.sealedProductId, sealedProducts.id),
-            eq(sealedCurrentPrices.source, "tcgcsv"),
-            eq(sealedCurrentPrices.priceType, "market"),
-            eq(sealedCurrentPrices.currency, "USD"),
-          ),
-        )
         .where(eq(sealedProducts.isActive, true))
         .groupBy(
           sealedProducts.categoryId,
@@ -193,7 +193,7 @@ export const getSealedCatalogSet = cache(
       )
       .limit(1);
 
-    return row ? mapSet(row) : null;
+    return row ? mapSetDetail(row) : null;
   },
 );
 
