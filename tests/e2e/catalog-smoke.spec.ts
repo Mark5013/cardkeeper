@@ -36,3 +36,26 @@ test("collection page redirects anonymous users to login with next path", async 
   await expect(page).toHaveURL(/\/login\?next=(%2F|\/)collection/);
   await expect(page.getByRole("heading", { name: /sign in/i })).toBeVisible();
 });
+
+test("sealed sets scroll continuously and filter with the styled language menu", async ({
+  page,
+}) => {
+  await page.goto("/sealed");
+
+  const englishSets = page.locator('a[href^="/sealed/sets/3/"]');
+  const japaneseSets = page.locator('a[href^="/sealed/sets/85/"]');
+  await expect
+    .poll(async () => (await englishSets.count()) + (await japaneseSets.count()))
+    .toBeGreaterThan(60);
+  await expect(
+    page.locator('nav[aria-label="Sealed set pages"]'),
+  ).toHaveCount(0);
+
+  const languageMenu = page.getByRole("button", { name: "Language" });
+  await languageMenu.click();
+  await page.getByRole("menuitemradio", { name: "Japanese" }).click();
+
+  await expect(languageMenu).toContainText("Japanese");
+  await expect(englishSets).toHaveCount(0);
+  await expect.poll(async () => japaneseSets.count()).toBeGreaterThan(0);
+});

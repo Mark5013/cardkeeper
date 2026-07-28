@@ -50,8 +50,8 @@ language and TCGplayer category identities.
   labels.
 - Japanese card details, exact finish prices, price history, collection
   controls, and Japanese TCGplayer listing URLs use the Japanese identity.
-- `/sealed` groups sealed products into language-filtered TCGplayer sets with
-  set-name search and pagination.
+- `/sealed` loads the complete sealed set catalog for continuous scrolling,
+  with instant set-name search and a styled client-side language filter.
 - `/sealed/sets/{categoryId}/{groupId}` provides the products within one sealed
   set, including product-name search and pagination.
 - `/sealed/{productId}` provides product details, current low/mid/high/market
