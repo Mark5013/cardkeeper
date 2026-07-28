@@ -83,6 +83,7 @@ function parseArgs(args) {
     resetStage: false,
     stageOnly: false,
     stagePath: null,
+    syncCurrent: false,
     tempDir: null,
     to: null,
     verifyLegacy: false,
@@ -105,6 +106,8 @@ function parseArgs(args) {
       parsed.resetStage = true;
     } else if (arg === "--stage-only") {
       parsed.stageOnly = true;
+    } else if (arg === "--sync-current") {
+      parsed.syncCurrent = true;
     } else if (arg === "--verify-legacy") {
       parsed.verifyLegacy = true;
     } else if (arg === "--verify-upload") {
@@ -149,6 +152,18 @@ function parseArgs(args) {
 
   if ((parsed.removeLegacy || parsed.restoreLegacyFrom) && !parsed.verifyUpload) {
     throw new Error("Legacy cleanup or restoration requires --verify-upload.");
+  }
+
+  if (
+    parsed.syncCurrent &&
+    (parsed.dryRun ||
+      parsed.stageOnly ||
+      parsed.verifyUpload ||
+      !parsed.verifyLegacy)
+  ) {
+    throw new Error(
+      "--sync-current requires an upload run with --verify-legacy and cannot be combined with --dry-run, --stage-only, or --verify-upload.",
+    );
   }
 
   if (parsed.removeLegacy && parsed.restoreLegacyFrom) {
@@ -378,7 +393,13 @@ async function backfillPrices() {
 
   if (options.verifyLegacy) {
     await verifyStageAgainstLegacyPricePoints();
-    await verifyStageAgainstCurrentPrices();
+    if (options.syncCurrent) {
+      console.log(
+        "Pre-upload current-price verification deferred to the atomic stage synchronization.",
+      );
+    } else {
+      await verifyStageAgainstCurrentPrices();
+    }
   }
 
   if (options.verifyUpload) {
@@ -395,13 +416,22 @@ async function backfillPrices() {
     return;
   }
 
+  if (options.syncCurrent) {
+    const latestArchiveDate = await getLatestArchiveDate();
+    if (options.to !== latestArchiveDate) {
+      throw new Error(
+        `--sync-current requires --to=${latestArchiveDate}, TCGCSV's latest completed archive.`,
+      );
+    }
+  }
+
   await assertCurrentTcgcsvHistoryMappingFingerprint(mappingFingerprint);
   const uploadStats = await uploadPriceSeries(stageExpectation, mappingFingerprint);
   setStageMetadata("uploaded_at", new Date().toISOString());
   setStageMetadata("uploaded_points", String(uploadStats.points));
 
   console.log(
-    `Replaced ${uploadStats.replacedSeries.toLocaleString()} prior TCGCSV market series with ${uploadStats.points.toLocaleString()} changed prices across ${uploadStats.series.toLocaleString()} safe compressed series. Legacy price_points rows were preserved for verification.`,
+    `Replaced ${uploadStats.replacedSeries.toLocaleString()} prior TCGCSV market series with ${uploadStats.points.toLocaleString()} changed prices across ${uploadStats.series.toLocaleString()} safe compressed series${options.syncCurrent ? ` and synchronized ${uploadStats.currentPricesSynced.toLocaleString()} existing current prices to the latest archive` : ""}. Legacy price_points rows were preserved for verification.`,
   );
 }
 
@@ -1025,6 +1055,11 @@ async function uploadPriceSeries(expected, mappingFingerprint) {
     await transaction`
       lock table card_variants, card_variant_external_refs in share mode
     `;
+    if (options.syncCurrent) {
+      await transaction`
+        lock table current_prices in share row exclusive mode
+      `;
+    }
     await assertCurrentTcgcsvHistoryMappingFingerprint(
       mappingFingerprint,
       transaction,
@@ -1037,6 +1072,20 @@ async function uploadPriceSeries(expected, mappingFingerprint) {
         and currency = 'USD'
       returning card_variant_id
     `;
+    const currentVariantIds = options.syncCurrent
+      ? new Set(
+          (
+            await transaction`
+              select card_variant_id
+              from current_prices
+              where source = 'tcgcsv'
+                and price_type = 'market'
+                and currency = 'USD'
+                and observed_at < ${`${addUtcDays(options.to, 1)}T00:00:00.000Z`}::timestamptz
+            `
+          ).map((row) => String(row.card_variant_id)),
+        )
+      : new Set();
     const iterator = stage
       .prepare(`
         select variants.variant_id, history_points.observed_day, history_points.amount_minor
@@ -1049,10 +1098,12 @@ async function uploadPriceSeries(expected, mappingFingerprint) {
     let observedOn = [];
     let amountsMinor = [];
     let batch = [];
+    let currentBatch = [];
     let earliest = null;
     let latest = null;
     let pointCount = 0;
     let seriesCount = 0;
+    let currentPricesSynced = 0;
 
     const flushSeries = async () => {
       if (!currentVariantId) return;
@@ -1066,6 +1117,16 @@ async function uploadPriceSeries(expected, mappingFingerprint) {
         amounts_minor: amountsMinor,
         updated_at: new Date(),
       });
+      if (currentVariantIds.has(currentVariantId)) {
+        currentBatch.push({
+          card_variant_id: currentVariantId,
+          source: "tcgcsv",
+          price_type: "market",
+          currency: "USD",
+          amount_minor: amountsMinor.at(-1),
+          observed_at: new Date(`${options.to}T00:00:00.000Z`),
+        });
+      }
       pointCount += observedOn.length;
       seriesCount += 1;
       observedOn = [];
@@ -1073,7 +1134,12 @@ async function uploadPriceSeries(expected, mappingFingerprint) {
 
       if (batch.length >= SERIES_WRITE_BATCH_SIZE) {
         await writeSeriesBatch(batch, transaction);
+        if (currentBatch.length > 0) {
+          await writeCurrentPriceBatch(currentBatch, transaction);
+          currentPricesSynced += currentBatch.length;
+        }
         batch = [];
+        currentBatch = [];
         if (seriesCount % 2000 === 0) {
           console.log(
             `Uploaded ${seriesCount.toLocaleString()} compressed price series...`,
@@ -1105,6 +1171,10 @@ async function uploadPriceSeries(expected, mappingFingerprint) {
     if (batch.length > 0) {
       await writeSeriesBatch(batch, transaction);
     }
+    if (currentBatch.length > 0) {
+      await writeCurrentPriceBatch(currentBatch, transaction);
+      currentPricesSynced += currentBatch.length;
+    }
 
     const uploadStats = {
       earliest,
@@ -1112,6 +1182,7 @@ async function uploadPriceSeries(expected, mappingFingerprint) {
       points: pointCount,
       replacedSeries: deletedSeries.length,
       series: seriesCount,
+      currentPricesSynced,
     };
 
     if (
@@ -1147,6 +1218,24 @@ async function writeSeriesBatch(batch, database = sql) {
       observed_on = excluded.observed_on,
       amounts_minor = excluded.amounts_minor,
       updated_at = excluded.updated_at
+  `;
+}
+
+async function writeCurrentPriceBatch(batch, database = sql) {
+  await database`
+    insert into current_prices ${sql(
+      batch,
+      "card_variant_id",
+      "source",
+      "price_type",
+      "currency",
+      "amount_minor",
+      "observed_at",
+    )}
+    on conflict (card_variant_id, source, price_type, currency) do update set
+      amount_minor = excluded.amount_minor,
+      observed_at = excluded.observed_at,
+      updated_at = now()
   `;
 }
 

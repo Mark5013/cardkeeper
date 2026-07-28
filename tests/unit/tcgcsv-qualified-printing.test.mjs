@@ -3,11 +3,21 @@ import test from "node:test";
 
 import {
   classifyReviewedTcgcsvQualifiedPrinting,
+  getTcgcsvQualifiedPrintingSourcePrinting,
   REVIEWED_TCGCSV_QUALIFIED_PRINTING_GROUPS,
   reviewTcgcsvQualifiedPrintingRef,
   TCGCSV_QUALIFIED_PRINTING_KEYS,
 } from "../../scripts/lib/tcgcsv-qualified-printing.mjs";
 import promoPrereleaseRepairPlan from "../../scripts/data/tcgcsv-promo-prerelease-printing-repairs-2026-07-26.json" with {
+  type: "json",
+};
+import englishQualifiedPrintingRepairPlan from "../../scripts/data/tcgcsv-english-qualified-printing-repairs-2026-07-27.json" with {
+  type: "json",
+};
+import englishQualifiedPrintingFollowupPlan from "../../scripts/data/tcgcsv-english-qualified-printing-followup-2026-07-27.json" with {
+  type: "json",
+};
+import englishQualifiedPrintingFinalPlan from "../../scripts/data/tcgcsv-english-qualified-printing-final-2026-07-27.json" with {
   type: "json",
 };
 
@@ -412,6 +422,129 @@ test("routes every product in the reviewed promo Prerelease manifest", () => {
   assert.equal(
     productCount,
     promoPrereleaseRepairPlan.expectedProductCount,
+  );
+});
+
+test("routes every exact English closeout product without broad qualifier inference", () => {
+  let assignmentCount = 0;
+
+  for (const plan of [
+    englishQualifiedPrintingRepairPlan,
+    englishQualifiedPrintingFollowupPlan,
+    englishQualifiedPrintingFinalPlan,
+  ]) {
+    for (const [, sourcePrinting, products] of plan.sources) {
+      for (const [
+        productId,
+        groupId,
+        productName,
+        targetPrinting,
+      ] of products) {
+        const classification =
+          classifyReviewedTcgcsvQualifiedPrinting({
+            groupId,
+            productId,
+            productName,
+            sourcePrinting,
+          });
+
+        if (targetPrinting === sourcePrinting) {
+          assert.deepEqual(classification, {
+            status: "ordinary",
+            printing: null,
+            qualifier: null,
+          });
+        } else {
+          assert.equal(classification.status, "qualified");
+          assert.equal(classification.printing, targetPrinting);
+        }
+        assignmentCount += 1;
+      }
+    }
+  }
+
+  assert.equal(
+    assignmentCount,
+    englishQualifiedPrintingRepairPlan.expectedProductCount +
+      englishQualifiedPrintingFollowupPlan.expectedProductCount +
+      englishQualifiedPrintingFinalPlan.expectedProductCount,
+  );
+  assert.equal(
+    classifyReviewedTcgcsvQualifiedPrinting({
+      groupId: 1539,
+      productId: "133846",
+      productName: "Oricorio - 14/145 (Pokemon League)",
+      sourcePrinting: "holofoil",
+    }).status,
+    "unsupported",
+  );
+  assert.deepEqual(
+    classifyReviewedTcgcsvQualifiedPrinting({
+      groupId: 1432,
+      productId: "88087",
+      productName: "Pikachu",
+      sourcePrinting: "holofoil",
+    }),
+    {
+      status: "ordinary",
+      printing: null,
+      qualifier: null,
+    },
+  );
+  assert.deepEqual(
+    classifyReviewedTcgcsvQualifiedPrinting({
+      groupId: 1938,
+      productId: "133814",
+      productName: "Professor Sycamore - 107a/122 (Non-Holo)",
+      sourcePrinting: "normal",
+    }),
+    {
+      status: "ordinary",
+      printing: null,
+      qualifier: null,
+    },
+  );
+});
+
+test("retains Reverse Holofoil as the source for qualified league printings", () => {
+  assert.equal(
+    getTcgcsvQualifiedPrintingSourcePrinting(
+      "pokemon_league_reverse_holofoil",
+    ),
+    "reverse_holofoil",
+  );
+  assert.equal(
+    reviewTcgcsvQualifiedPrintingRef({
+      groupId: 1539,
+      normalizedSubtypes: ["reverse_holofoil"],
+      printing: "pokemon_league_reverse_holofoil",
+      productId: "133846",
+      productName: "Oricorio - 14/145 (Pokemon League)",
+    }).reason,
+    null,
+  );
+});
+
+test("accepts exact form products reviewed across multiple source finishes", () => {
+  assert.equal(
+    reviewTcgcsvQualifiedPrintingRef({
+      groupId: 1397,
+      normalizedSubtypes: ["normal", "reverse_holofoil"],
+      printing: "50a_normal",
+      productId: "85813",
+      productName: "Golduck (50a)",
+    }).reason,
+    null,
+  );
+  assert.equal(
+    reviewTcgcsvQualifiedPrintingRef({
+      groupId: 1397,
+      normalizedSubtypes: ["normal", "reverse_holofoil"],
+      printing: "50a_reverse_holofoil",
+      productId: "85813",
+      productName: "Golduck (50a)",
+    }).reason,
+    null,
   );
 });
 

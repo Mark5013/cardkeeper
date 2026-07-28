@@ -1,40 +1,30 @@
 # TCGCSV missing-price discovery plan — 2026-07-25
 
-## Pause and baseline
+## Completed baseline
 
-Do not make another TCGCSV provider request until at least the next build and
-24-hour window. Resume by checking `last-updated.txt` once; if its timestamp has
-not changed, stop without fetching groups, products, prices, or archives.
+The English missing-price discovery and mapping closeout completed against the
+2026-07-27 TCGCSV build. Future investigations should still begin by checking
+`last-updated.txt` once and stop without fetching groups, products, prices, or
+archives when its timestamp has not changed.
 
-The current database-only baseline is:
+The final database-only baseline is:
 
-- 20,418 of 20,581 active English cards have at least one trusted current price.
-- 163 cards across 31 sets have no trusted current price.
-- 34,742 of 35,013 application-visible finishes are priced.
-- 271 finish gaps remain across 38 sets.
-- 96 gaps have multiple product refs, none lack a local variant or product
-  ref, and 175 have one trusted ref but no current market value.
+- 20,519 of 20,581 active English cards have at least one trusted current price.
+- 62 cards across 27 sets have no trusted current price.
+- 35,079 of 35,159 application-visible finishes are priced.
+- 80 finish gaps remain across 29 sets.
+- Zero gaps have multiple product refs, zero lack a product ref, 79 have one
+  trusted ref but no current TCGCSV market value, and one lacks a local variant
+  because the catalog advertises a finish TCGCSV does not publish.
 - 30 wholly unpriced cards have neither a provider-advertised finish nor a
   trusted local finish and are recorded as card-level gaps in the manifest.
 
-The corrected denominator includes three trusted local finishes that the
-catalog provider does not advertise: Rocket's Raikou ex `ex8-108` Normal,
-Gengar `ecard3-10` Reverse Holofoil, and Kingdra `ex7-12` Normal. Each has one
-exact TCGplayer product ref and no current TCGCSV market row.
-
-The first discovery pass should prioritize the five promo catalogs that account
-for most wholly unpriced cards:
-
-| Local set | Cards without a price | Finish gaps |
-| --- | ---: | ---: |
-| Scarlet & Violet Black Star Promos | 60 | 112 |
-| SM Black Star Promos | 10 | 11 |
-| SWSH Black Star Promos | 8 | 9 |
-| BW Black Star Promos | 13 | 11 |
-| XY Black Star Promos | 6 | 6 |
-
-Prismatic Evolutions, Black Bolt, and White Flare are complete and should not
-be pulled again for this investigation.
+The final manifest is
+`.artifacts/tcgcsv/tcgcsv-missing-price-gaps-2026-07-27-71099ab67d8b.json`.
+The 79 exact singletons are provider-market absences rather than unresolved
+mappings. Lokix `sv7-16` Holofoil is the only structural exception: catalog
+provider data advertises Holofoil, but exact TCGCSV product `567242` publishes
+only Normal and Reverse Holofoil.
 
 ## Likely causes to test
 
@@ -304,15 +294,44 @@ singletons without a current market value. The standalone marker check plus
 dry-run and write passes made 21 TCGCSV requests in total. Historical staging
 must use `--reset-stage`.
 
-The next implementation step is a separate provider-cache mode:
+An optional future tooling improvement is a separate provider-cache mode:
 
 ```text
 npm run prices:audit-missing -- --provider-cache=<changed-build-cache>
 ```
 
-That mode must consume one already downloaded, changed-build cache and produce
-a deterministic candidate report. A separate reviewed repair manifest remains
-the only input allowed to mutate the database.
+That mode should consume one already downloaded, changed-build cache and
+produce a deterministic candidate report. It is not required to resolve the
+current English mappings. A separate reviewed repair manifest remains the only
+input allowed to mutate the database.
+
+## Final reviewed closeout â€” 2026-07-27
+
+Exact TCGplayer product discovery and TCGCSV group/product/price evidence
+resolved the remaining English physical identities:
+
+- 213 products across 86 cards in the main qualified-printing closeout;
+- ordinary and Cosmos Holo Slowking `xy9-21`;
+- Steam Siege league, cup, and regional tournament printings;
+- Aquapolis `50a`/`50b`, `74a`/`74b`, and `95a`/`95b` artwork/finish
+  identities; and
+- High Plains Orange and Meadow Pink Vivillon identities across Holofoil and
+  Reverse Holofoil.
+
+The final structural repair created 24 destination variants, moved 24 refs,
+retired eight empty generic variants, and changed no collection or
+quantity-history rows. Exact Morpeko V-UNION bundle refs `268450` and `495215`
+were removed and permanently excluded from importer reconciliation.
+
+The final five-group dry-run and write pass both found zero high-confidence
+stale refs. The database-only audit then reached zero multiple-ref and zero
+missing-ref gaps.
+
+History was rebuilt from a new `--reset-stage` recovery directory across all
+901 archives from 2024-02-08 through 2026-07-27. The verified upload contains
+7,208,900 changed points in 34,791 ordered series. It synchronized only the
+34,730 current rows that already existed and did not invent current values for
+the 79 null-market singleton products. Independent `--verify-upload` passed.
 
 ## Completion criteria
 

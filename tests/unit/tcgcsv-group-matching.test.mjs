@@ -146,6 +146,13 @@ test("normalizes catalog edition suffixes and TCGplayer energy abbreviations", (
     }),
     true,
   );
+  assert.equal(
+    doesTcgcsvProductNameMatchCard({
+      cardName: "Celebi \u25c7",
+      productName: "Celebi Prism Star",
+    }),
+    true,
+  );
 });
 
 test("uses a full collector-number denominator to disambiguate local sets", () => {

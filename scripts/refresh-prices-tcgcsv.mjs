@@ -15,6 +15,7 @@ import {
 import {
   classifyReviewedTcgcsvQualifiedPrinting,
   getTcgcsvQualifiedPrintingSourcePrinting,
+  isReviewedTcgcsvQualifiedPrintingIdentity,
   REVIEWED_TCGCSV_QUALIFIED_PRINTING_GROUPS,
   reviewTcgcsvQualifiedPrintingRef,
 } from "./lib/tcgcsv-qualified-printing.mjs";
@@ -24,6 +25,10 @@ const { loadEnvConfig } = nextEnv;
 const TCGCSV_BASE_URL = "https://tcgcsv.com";
 const POKEMON_CATEGORY_ID = 3;
 const SOURCE = "tcgcsv";
+const EXCLUDED_BUNDLED_CARD_PRODUCT_IDS = new Set([
+  "268450",
+  "495215",
+]);
 const CURRENCY = "USD";
 const DEFAULT_PAGE_DELAY_MS = 250;
 const MINIMUM_PAGE_DELAY_MS = 250;
@@ -508,14 +513,19 @@ async function preparePriceRecordsForSet({
           groupId: group.groupId,
           productId: product.productId,
           productName: product.name,
+          sourcePrinting: normalizedSubtype,
         });
 
       if (!subTypeName && amountRecords.length === 0) continue;
 
       if (
-        REVIEWED_QUALIFIED_PRINTING_GROUP_IDS.has(
+        (REVIEWED_QUALIFIED_PRINTING_GROUP_IDS.has(
           String(group.groupId),
-        ) &&
+        ) ||
+          isReviewedTcgcsvQualifiedPrintingIdentity({
+            groupId: group.groupId,
+            productId: product.productId,
+          })) &&
         qualifiedPrinting.status === "unsupported"
       ) {
         throw new Error(
@@ -677,6 +687,14 @@ function getSunMoonEnergyCardNumber(product) {
 }
 
 function shouldSkipProductForSet(product, group, localSet) {
+  if (
+    EXCLUDED_BUNDLED_CARD_PRODUCT_IDS.has(
+      String(product.productId ?? ""),
+    )
+  ) {
+    return true;
+  }
+
   const groupName = normalizeSetName(group.name);
   const localSetName = normalizeSetName(localSet.name);
   const productName = normalizeCardName(product.name);

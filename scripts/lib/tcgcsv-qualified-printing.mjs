@@ -4,6 +4,15 @@ import svPromoRepairPlan from "../data/tcgcsv-sv-promo-printing-repairs-2026-07-
 import promoPrereleaseRepairPlan from "../data/tcgcsv-promo-prerelease-printing-repairs-2026-07-26.json" with {
   type: "json",
 };
+import englishQualifiedPrintingRepairPlan from "../data/tcgcsv-english-qualified-printing-repairs-2026-07-27.json" with {
+  type: "json",
+};
+import englishQualifiedPrintingFollowupPlan from "../data/tcgcsv-english-qualified-printing-followup-2026-07-27.json" with {
+  type: "json",
+};
+import englishQualifiedPrintingFinalPlan from "../data/tcgcsv-english-qualified-printing-final-2026-07-27.json" with {
+  type: "json",
+};
 
 export const TCGCSV_QUALIFIED_PRINTING_KEYS = Object.freeze({
   COSMOS_HOLOFOIL: "cosmos_holofoil",
@@ -29,6 +38,11 @@ export const REVIEWED_TCGCSV_QUALIFIED_PRINTING_GROUPS = Object.freeze({
   WHITE_FLARE: 24326,
   XY_PROMOS: 1451,
 });
+const ENGLISH_QUALIFIED_PRINTING_REPAIR_PLANS = [
+  englishQualifiedPrintingRepairPlan,
+  englishQualifiedPrintingFollowupPlan,
+  englishQualifiedPrintingFinalPlan,
+];
 
 const QUALIFIER_TO_PRINTING = new Map([
   ["Poke Ball Pattern", TCGCSV_QUALIFIED_PRINTING_KEYS.POKE_BALL],
@@ -108,6 +122,39 @@ const PROMO_PRERELEASE_ASSIGNMENTS_BY_PRODUCT_ID = new Map(
 const PROMO_PRERELEASE_GROUP_IDS = new Set(
   promoPrereleaseRepairPlan.groups.map((group) => String(group.groupId)),
 );
+const ENGLISH_QUALIFIED_PRINTING_ASSIGNMENTS_BY_PRODUCT_ID =
+  new Map();
+for (const plan of ENGLISH_QUALIFIED_PRINTING_REPAIR_PLANS) {
+  for (const [
+    cardProviderId,
+    sourcePrinting,
+    products,
+  ] of plan.sources) {
+    for (const [
+      productId,
+      groupId,
+      productName,
+      targetPrinting,
+    ] of products) {
+      const normalizedProductId = String(productId);
+      const assignments =
+        ENGLISH_QUALIFIED_PRINTING_ASSIGNMENTS_BY_PRODUCT_ID.get(
+          normalizedProductId,
+        ) ?? [];
+      assignments.push({
+        cardProviderId,
+        groupId: String(groupId),
+        productName,
+        sourcePrinting,
+        targetPrinting,
+      });
+      ENGLISH_QUALIFIED_PRINTING_ASSIGNMENTS_BY_PRODUCT_ID.set(
+        normalizedProductId,
+        assignments,
+      );
+    }
+  }
+}
 
 function getParentheticalSegments(value) {
   return Array.from(String(value ?? "").matchAll(/\(([^()]*)\)/g), (match) => ({
@@ -136,8 +183,36 @@ export function classifyReviewedTcgcsvQualifiedPrinting({
   groupId,
   productId,
   productName,
+  sourcePrinting,
 }) {
   const normalizedGroupId = String(groupId ?? "").trim();
+  const englishQualifiedPrintingAssignments =
+    ENGLISH_QUALIFIED_PRINTING_ASSIGNMENTS_BY_PRODUCT_ID.get(
+      String(productId ?? "").trim(),
+    ) ?? [];
+  const normalizedSourcePrinting = String(
+    sourcePrinting ?? "",
+  ).trim();
+  const englishQualifiedPrintingAssignment =
+    normalizedSourcePrinting
+      ? englishQualifiedPrintingAssignments.find(
+          (assignment) =>
+            assignment.sourcePrinting ===
+            normalizedSourcePrinting,
+        )
+      : englishQualifiedPrintingAssignments.length === 1
+        ? englishQualifiedPrintingAssignments[0]
+        : null;
+
+  if (englishQualifiedPrintingAssignment) {
+    return classifyReviewedEnglishQualifiedPrinting({
+      assignment: englishQualifiedPrintingAssignment,
+      groupId: normalizedGroupId,
+      productName,
+      sourcePrinting,
+    });
+  }
+
   const promoPrereleaseAssignment =
     PROMO_PRERELEASE_ASSIGNMENTS_BY_PRODUCT_ID.get(
       String(productId ?? "").trim(),
@@ -168,6 +243,17 @@ export function classifyReviewedTcgcsvQualifiedPrinting({
       productId,
       productName,
     });
+  }
+
+  if (
+    normalizedSourcePrinting === "normal" &&
+    /\(non[- ]holo\)$/i.test(String(productName ?? "").trim())
+  ) {
+    return {
+      status: "ordinary",
+      printing: null,
+      qualifier: null,
+    };
   }
 
   const reviewedQualifiers = ALLOWED_QUALIFIERS_BY_GROUP_ID.get(
@@ -229,6 +315,12 @@ export function classifyReviewedTcgcsvQualifiedPrinting({
 export function getTcgcsvQualifiedPrintingSourcePrinting(value) {
   const printing = String(value ?? "").trim();
 
+  if (
+    printing === "reverse_holofoil" ||
+    printing.endsWith("_reverse_holofoil")
+  ) {
+    return "reverse_holofoil";
+  }
   if (printing.endsWith("_holofoil")) return "holofoil";
   if (printing.endsWith("_normal")) return "normal";
 
@@ -247,10 +339,11 @@ export function reviewTcgcsvQualifiedPrintingRef({
     groupId: normalizedGroupId,
     productId,
     productName,
+    sourcePrinting: getTcgcsvQualifiedPrintingSourcePrinting(printing),
   });
 
   if (
-    !isReviewedQualifiedPrintingIdentity({
+    !isReviewedTcgcsvQualifiedPrintingIdentity({
       groupId: normalizedGroupId,
       productId,
     })
@@ -279,7 +372,27 @@ export function reviewTcgcsvQualifiedPrintingRef({
   const sourcePrinting = getTcgcsvQualifiedPrintingSourcePrinting(
     classification.printing,
   );
+  const matchingEnglishAssignments = (
+    ENGLISH_QUALIFIED_PRINTING_ASSIGNMENTS_BY_PRODUCT_ID.get(
+      String(productId ?? "").trim(),
+    ) ?? []
+  ).filter(
+    (assignment) =>
+      assignment.groupId === normalizedGroupId &&
+      assignment.productName === String(productName ?? "").trim(),
+  );
+  const reviewedSourcePrintings = new Set(
+    matchingEnglishAssignments.map(
+      (assignment) => assignment.sourcePrinting,
+    ),
+  );
+  const hasReviewedMultiSourceIdentity =
+    reviewedSourcePrintings.size > 1 &&
+    [...distinctSubtypes].every((normalizedSubtype) =>
+      reviewedSourcePrintings.has(normalizedSubtype),
+    );
   if (
+    !hasReviewedMultiSourceIdentity &&
     [...distinctSubtypes].some(
       (normalizedSubtype) => normalizedSubtype !== sourcePrinting,
     )
@@ -310,6 +423,52 @@ export function reviewTcgcsvQualifiedPrintingRef({
   };
 }
 
+function classifyReviewedEnglishQualifiedPrinting({
+  assignment,
+  groupId,
+  productName,
+  sourcePrinting,
+}) {
+  const normalizedProductName = String(productName ?? "").trim();
+  const normalizedSourcePrinting = String(
+    sourcePrinting ?? "",
+  ).trim();
+  const identityMatches =
+    groupId === assignment.groupId &&
+    normalizedProductName === assignment.productName &&
+    (!normalizedSourcePrinting ||
+      normalizedSourcePrinting === assignment.sourcePrinting);
+
+  if (!identityMatches) {
+    return unsupportedResult(
+      getReviewedPrintingQualifier(assignment.targetPrinting),
+    );
+  }
+
+  if (assignment.targetPrinting === assignment.sourcePrinting) {
+    return {
+      status: "ordinary",
+      printing: null,
+      qualifier: null,
+    };
+  }
+
+  return {
+    status: "qualified",
+    printing: assignment.targetPrinting,
+    qualifier: getReviewedPrintingQualifier(
+      assignment.targetPrinting,
+    ),
+  };
+}
+
+function getReviewedPrintingQualifier(printing) {
+  return String(printing)
+    .replace(/_(?:holofoil|normal)$/, "")
+    .replaceAll("_", " ")
+    .replace(/\b\w/g, (letter) => letter.toUpperCase());
+}
+
 function classifyReviewedPromoPrereleasePrinting({
   assignment,
   groupId,
@@ -338,14 +497,22 @@ function classifyReviewedPromoPrereleasePrinting({
   };
 }
 
-function isReviewedQualifiedPrintingIdentity({ groupId, productId }) {
+export function isReviewedTcgcsvQualifiedPrintingIdentity({
+  groupId,
+  productId,
+}) {
+  const normalizedGroupId = String(groupId ?? "").trim();
+
   return (
-    ALLOWED_QUALIFIERS_BY_GROUP_ID.has(groupId) ||
-    PROMO_PRERELEASE_GROUP_IDS.has(groupId) ||
+    ALLOWED_QUALIFIERS_BY_GROUP_ID.has(normalizedGroupId) ||
+    PROMO_PRERELEASE_GROUP_IDS.has(normalizedGroupId) ||
     PROMO_PRERELEASE_ASSIGNMENTS_BY_PRODUCT_ID.has(
       String(productId ?? "").trim(),
     ) ||
-    groupId ===
+    ENGLISH_QUALIFIED_PRINTING_ASSIGNMENTS_BY_PRODUCT_ID.has(
+      String(productId ?? "").trim(),
+    ) ||
+    normalizedGroupId ===
       String(
         REVIEWED_TCGCSV_QUALIFIED_PRINTING_GROUPS.SCARLET_VIOLET_PROMOS,
       )

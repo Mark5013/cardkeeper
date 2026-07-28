@@ -55,6 +55,12 @@ export function formatCardPrinting(value: string, providerSetId?: string) {
 export function getQualifiedPrintingSourcePrinting(value: string) {
   const printing = normalizePrinting(value);
 
+  if (
+    printing === "reverse_holofoil" ||
+    printing.endsWith("_reverse_holofoil")
+  ) {
+    return "reverse_holofoil";
+  }
   if (printing.endsWith("_holofoil")) return "holofoil";
   if (printing.endsWith("_normal")) return "normal";
 

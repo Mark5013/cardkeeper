@@ -1,0 +1,196 @@
+{
+  "version": 1,
+  "repairId": "tcgcsv-english-qualified-printing-final-2026-07-27",
+  "reviewedAt": "2026-07-27",
+  "evidenceSource": "tcgcsv-exact-group-products-and-prices",
+  "clearSourceCurrentPrices": true,
+  "clearSourceHistory": true,
+  "expectedVariantCount": 11,
+  "expectedCardCount": 7,
+  "expectedProductCount": 27,
+  "sources": [
+    [
+      "xy11-15",
+      "reverse_holofoil",
+      [
+        ["121004", 1815, "Volcarona", "reverse_holofoil"],
+        [
+          "126202",
+          1539,
+          "Volcarona - 15/114 (Pokemon League) [1st Place]",
+          "pokemon_league_1st_place_reverse_holofoil"
+        ],
+        [
+          "126203",
+          1539,
+          "Volcarona - 15/114 (Pokemon League) [2nd Place]",
+          "pokemon_league_2nd_place_reverse_holofoil"
+        ],
+        [
+          "126204",
+          1539,
+          "Volcarona - 15/114 (Pokemon League) [3rd Place]",
+          "pokemon_league_3rd_place_reverse_holofoil"
+        ],
+        [
+          "126205",
+          1539,
+          "Volcarona - 15/114 (Pokemon League) [4th Place]",
+          "pokemon_league_4th_place_reverse_holofoil"
+        ]
+      ]
+    ],
+    [
+      "xy11-103",
+      "reverse_holofoil",
+      [
+        ["121227", 1815, "Ninja Boy", "reverse_holofoil"],
+        [
+          "129721",
+          1539,
+          "Ninja Boy - 103/114 (League Cup)",
+          "league_cup_reverse_holofoil"
+        ],
+        [
+          "186524",
+          1539,
+          "Ninja Boy - 103/114 (League Cup) [Staff]",
+          "league_cup_staff_reverse_holofoil"
+        ]
+      ]
+    ],
+    [
+      "xy11-104",
+      "reverse_holofoil",
+      [
+        ["121228", 1815, "Pokemon Ranger", "reverse_holofoil"],
+        [
+          "174430",
+          1539,
+          "Pokemon Ranger - 104/114 (Regional Championships)",
+          "regional_championships_reverse_holofoil"
+        ],
+        [
+          "174494",
+          1539,
+          "Pokemon Ranger - 104/114 (Regional Championships) [Staff]",
+          "regional_championships_staff_reverse_holofoil"
+        ]
+      ]
+    ],
+    [
+      "ecard2-50",
+      "normal",
+      [
+        ["85813", 1397, "Golduck (50a)", "50a_normal"],
+        ["85814", 1397, "Golduck (50b)", "50b_normal"]
+      ]
+    ],
+    [
+      "ecard2-50",
+      "reverse_holofoil",
+      [
+        [
+          "85813",
+          1397,
+          "Golduck (50a)",
+          "50a_reverse_holofoil"
+        ],
+        [
+          "85814",
+          1397,
+          "Golduck (50b)",
+          "50b_reverse_holofoil"
+        ]
+      ]
+    ],
+    [
+      "ecard2-74",
+      "normal",
+      [
+        ["84971", 1397, "Drowzee (74a)", "74a_normal"],
+        ["84972", 1397, "Drowzee (74b)", "74b_normal"]
+      ]
+    ],
+    [
+      "ecard2-74",
+      "reverse_holofoil",
+      [
+        [
+          "84971",
+          1397,
+          "Drowzee (74a)",
+          "74a_reverse_holofoil"
+        ],
+        [
+          "84972",
+          1397,
+          "Drowzee (74b)",
+          "74b_reverse_holofoil"
+        ]
+      ]
+    ],
+    [
+      "ecard2-95",
+      "normal",
+      [
+        ["87590", 1397, "Mr. Mime (95a)", "95a_normal"],
+        ["87591", 1397, "Mr. Mime (95b)", "95b_normal"]
+      ]
+    ],
+    [
+      "ecard2-95",
+      "reverse_holofoil",
+      [
+        [
+          "87590",
+          1397,
+          "Mr. Mime (95a)",
+          "95a_reverse_holofoil"
+        ],
+        [
+          "87591",
+          1397,
+          "Mr. Mime (95b)",
+          "95b_reverse_holofoil"
+        ]
+      ]
+    ],
+    [
+      "xy1-17",
+      "holofoil",
+      [
+        [
+          "90395",
+          1387,
+          "Vivillon (High Plains [Orange])",
+          "high_plains_orange_holofoil"
+        ],
+        [
+          "91249",
+          1387,
+          "Vivillon (Meadow [Pink])",
+          "meadow_pink_holofoil"
+        ]
+      ]
+    ],
+    [
+      "xy1-17",
+      "reverse_holofoil",
+      [
+        [
+          "90395",
+          1387,
+          "Vivillon (High Plains [Orange])",
+          "high_plains_orange_reverse_holofoil"
+        ],
+        [
+          "91249",
+          1387,
+          "Vivillon (Meadow [Pink])",
+          "meadow_pink_reverse_holofoil"
+        ]
+      ]
+    ]
+  ]
+}

@@ -1,0 +1,33 @@
+{
+  "version": 1,
+  "source": "tcgplayer",
+  "refType": "product_id",
+  "auditedAt": "2026-07-27T00:00:00.000Z",
+  "expectedRefCount": 3,
+  "historyTrustedFrom": "2026-07-27",
+  "historyRebuildIdentities": [
+    { "cardProviderId": "sm7-55", "printing": "reverse_holofoil" },
+    { "cardProviderId": "swshp-SWSH218", "printing": "holofoil" },
+    { "cardProviderId": "swshp-SWSH290", "printing": "holofoil" }
+  ],
+  "repairs": [
+    {
+      "productId": "133845",
+      "cardProviderId": "sm7-55",
+      "printing": "reverse_holofoil",
+      "reason": "collector_denominator"
+    },
+    {
+      "productId": "268450",
+      "cardProviderId": "swshp-SWSH218",
+      "printing": "holofoil",
+      "reason": "cross_card"
+    },
+    {
+      "productId": "495215",
+      "cardProviderId": "swshp-SWSH290",
+      "printing": "holofoil",
+      "reason": "cross_card"
+    }
+  ]
+}

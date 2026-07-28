@@ -1,0 +1,25 @@
+{
+  "version": 1,
+  "repairId": "tcgcsv-english-qualified-printing-followup-2026-07-27",
+  "reviewedAt": "2026-07-27",
+  "evidenceSource": "tcgplayer-first-party-product-id-search",
+  "clearSourceHistory": true,
+  "expectedVariantCount": 1,
+  "expectedCardCount": 1,
+  "expectedProductCount": 2,
+  "sources": [
+    [
+      "xy9-21",
+      "holofoil",
+      [
+        ["111524", 1701, "Slowking", "holofoil"],
+        [
+          "148388",
+          1938,
+          "Slowking - 21/122 (Cosmos Holo)",
+          "cosmos_holofoil"
+        ]
+      ]
+    ]
+  ]
+}

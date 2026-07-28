@@ -10,6 +10,15 @@ import repairManifest from "./data/tcgcsv-sv-promo-printing-repairs-2026-07-26.j
 import promoPrereleaseRepairManifest from "./data/tcgcsv-promo-prerelease-printing-repairs-2026-07-26.json" with {
   type: "json",
 };
+import englishQualifiedPrintingRepairManifest from "./data/tcgcsv-english-qualified-printing-repairs-2026-07-27.json" with {
+  type: "json",
+};
+import englishQualifiedPrintingFollowupManifest from "./data/tcgcsv-english-qualified-printing-followup-2026-07-27.json" with {
+  type: "json",
+};
+import englishQualifiedPrintingFinalManifest from "./data/tcgcsv-english-qualified-printing-final-2026-07-27.json" with {
+  type: "json",
+};
 import {
   doesTcgcsvProductNameMatchCard,
   normalizeTcgcsvCollectorNumber,
@@ -27,6 +36,18 @@ const options = parseArgs(process.argv.slice(2));
 const manifest =
   options.batch === "promo-prerelease"
     ? validatePromoPrereleaseManifest(promoPrereleaseRepairManifest)
+    : options.batch === "english-closeout"
+      ? validateEnglishCloseoutManifest(
+          englishQualifiedPrintingRepairManifest,
+        )
+      : options.batch === "english-followup"
+        ? validateEnglishCloseoutManifest(
+            englishQualifiedPrintingFollowupManifest,
+          )
+      : options.batch === "english-final"
+        ? validateEnglishCloseoutManifest(
+            englishQualifiedPrintingFinalManifest,
+          )
     : validateSvPromoManifest(repairManifest);
 
 if (!process.env.DATABASE_URL) {
@@ -58,6 +79,12 @@ function parseArgs(args) {
     if (arg === "--apply") parsed.apply = true;
     else if (arg === "--batch=promo-prerelease") {
       parsed.batch = "promo-prerelease";
+    } else if (arg === "--batch=english-closeout") {
+      parsed.batch = "english-closeout";
+    } else if (arg === "--batch=english-followup") {
+      parsed.batch = "english-followup";
+    } else if (arg === "--batch=english-final") {
+      parsed.batch = "english-final";
     }
     else if (arg === "--rollback") {
       parsed.apply = true;
@@ -261,6 +288,101 @@ function validatePromoPrereleaseManifest(input) {
   };
 }
 
+function validateEnglishCloseoutManifest(input) {
+  if (
+    input?.version !== 1 ||
+    input.clearSourceHistory !== true ||
+    !Array.isArray(input.sources) ||
+    input.sources.length !== input.expectedVariantCount
+  ) {
+    throw new Error(
+      "Invalid English qualified-printing closeout manifest header.",
+    );
+  }
+
+  const assignments = [];
+  const sourceKeys = new Set();
+
+  for (const [sourceIndex, source] of input.sources.entries()) {
+    if (
+      !Array.isArray(source) ||
+      source.length !== 3 ||
+      !/^[A-Za-z0-9._-]+$/.test(source[0]) ||
+      !/^(?:holofoil|normal|reverse_holofoil)$/.test(source[1]) ||
+      !Array.isArray(source[2]) ||
+      source[2].length < 2
+    ) {
+      throw new Error(
+        `Invalid English closeout source at index ${sourceIndex}.`,
+      );
+    }
+
+    const [cardProviderId, sourcePrinting, products] = source;
+    const sourceKey = `${cardProviderId}:${sourcePrinting}`;
+    if (sourceKeys.has(sourceKey)) {
+      throw new Error(`Duplicate English closeout source ${sourceKey}.`);
+    }
+    sourceKeys.add(sourceKey);
+
+    for (const [productIndex, product] of products.entries()) {
+      if (
+        !Array.isArray(product) ||
+        product.length !== 4 ||
+        !/^[1-9]\d{0,14}$/.test(product[0]) ||
+        !Number.isInteger(product[1]) ||
+        product[1] <= 0 ||
+        typeof product[2] !== "string" ||
+        !product[2].trim() ||
+        !/^[a-z0-9_]+$/.test(product[3]) ||
+        getTcgcsvQualifiedPrintingSourcePrinting(product[3]) !==
+          sourcePrinting
+      ) {
+        throw new Error(
+          `Invalid English closeout product at source ${sourceIndex}, index ${productIndex}.`,
+        );
+      }
+
+      assignments.push({
+        cardProviderId,
+        groupId: String(product[1]),
+        groupName: null,
+        productId: product[0],
+        productName: product[2],
+        setProviderId: cardProviderId.split("-")[0],
+        sourcePrinting,
+        targetPrinting: product[3],
+      });
+    }
+  }
+
+  const assignmentKeys = assignments.map(
+    (assignment) =>
+      `${assignment.cardProviderId}:${assignment.sourcePrinting}:${assignment.productId}`,
+  );
+  const cardProviderIds = new Set(
+    assignments.map((assignment) => assignment.cardProviderId),
+  );
+  if (
+    assignments.length !== input.expectedProductCount ||
+    new Set(assignmentKeys).size !== assignmentKeys.length ||
+    cardProviderIds.size !== input.expectedCardCount
+  ) {
+    throw new Error(
+      "The English closeout manifest has duplicate or miscounted identities.",
+    );
+  }
+
+  return {
+    ...input,
+    assignments,
+    batchLabel: "English qualified-printing closeout",
+    expectedGroupCount: new Set(
+      assignments.map((assignment) => assignment.groupId),
+    ).size,
+    snapshotSlug: "english-qualified-printing-closeout",
+  };
+}
+
 async function repairPrintings() {
   const plan = await buildRepairPlan(sql);
 
@@ -280,6 +402,14 @@ async function repairPrintings() {
   console.log(
     `Collection safety: ${plan.collectionSnapshot.collectionRows} collection rows / ${plan.collectionSnapshot.quantityHistoryRows} quantity-history rows. Current/history price rows on sources: ${plan.sourcePriceRowCount}/${plan.sourceSeriesRowCount}.`,
   );
+  if (
+    manifest.clearSourceCurrentPrices ||
+    manifest.clearSourceHistory
+  ) {
+    console.log(
+      `Price reset: ${manifest.clearSourceCurrentPrices ? plan.sourcePriceRowCount : 0} ambiguous current row(s) and ${manifest.clearSourceHistory ? plan.sourceSeriesRowCount : 0} source series row(s) will be cleared before the reviewed rebuild.`,
+    );
+  }
 
   if (!options.apply) {
     console.log(
@@ -310,6 +440,52 @@ async function repairPrintings() {
         throw new Error(
           "Qualified promo mapping state changed after the pre-repair snapshot.",
         );
+      }
+
+      if (
+        manifest.clearSourceCurrentPrices &&
+        lockedPlan.sourcePriceRowCount > 0
+      ) {
+        const deletedCurrentPrices = await transaction`
+          delete from current_prices
+          where card_variant_id in ${transaction(
+            lockedPlan.sourceVariantIds,
+          )}
+            and source = 'tcgcsv'
+          returning id
+        `;
+
+        if (
+          deletedCurrentPrices.length !==
+          lockedPlan.sourcePriceRowCount
+        ) {
+          throw new Error(
+            "Failed to clear every ambiguous TCGCSV current price.",
+          );
+        }
+      }
+
+      if (
+        manifest.clearSourceHistory &&
+        lockedPlan.sourceSeriesRowCount > 0
+      ) {
+        const deletedSeries = await transaction`
+          delete from price_series
+          where card_variant_id in ${transaction(
+            lockedPlan.sourceVariantIds,
+          )}
+            and source = 'tcgcsv'
+          returning card_variant_id
+        `;
+
+        if (
+          deletedSeries.length !==
+          lockedPlan.sourceSeriesRowCount
+        ) {
+          throw new Error(
+            "Failed to clear every ambiguous TCGCSV source series.",
+          );
+        }
       }
 
       const destinationIds = new Map();
@@ -361,6 +537,10 @@ async function repairPrintings() {
               assignment.targetPrinting,
             ) === "holofoil"
               ? "Holofoil"
+              : getTcgcsvQualifiedPrintingSourcePrinting(
+                    assignment.targetPrinting,
+                  ) === "reverse_holofoil"
+                ? "Reverse Holofoil"
               : "Normal",
         };
         if (assignment.groupName) {
@@ -461,36 +641,46 @@ async function buildRepairPlan(database) {
     order by external_ref.ref_value
   `;
 
-  if (rows.length !== manifest.expectedProductCount) {
-    throw new Error(
-      `Expected ${manifest.expectedProductCount} reviewed product refs, found ${rows.length}.`,
-    );
+  const rowsByProductId = new Map();
+  for (const row of rows) {
+    const productId = String(row.product_id);
+    const productRows = rowsByProductId.get(productId) ?? [];
+    productRows.push(row);
+    rowsByProductId.set(productId, productRows);
   }
-
-  const rowsByProductId = new Map(
-    rows.map((row) => [String(row.product_id), row]),
-  );
-  const atTarget = manifest.assignments.every((assignment) => {
-    const row = rowsByProductId.get(assignment.productId);
-    return (
-      row?.card_provider_id === assignment.cardProviderId &&
-      row.set_provider_id === assignment.setProviderId &&
-      row.printing === assignment.targetPrinting &&
-      row.condition === "unspecified" &&
-      row.language_code === "en"
+  const getAssignmentRows = (assignment, printing) =>
+    (rowsByProductId.get(assignment.productId) ?? []).filter(
+      (row) =>
+        row.card_provider_id === assignment.cardProviderId &&
+        row.set_provider_id === assignment.setProviderId &&
+        row.printing === printing &&
+        row.condition === "unspecified" &&
+        row.language_code === "en",
     );
-  });
-  const involvedVariantIds = [...new Set(rows.map((row) => String(row.variant_id)))];
+  const targetRows = manifest.assignments.map((assignment) =>
+    getAssignmentRows(assignment, assignment.targetPrinting),
+  );
+  const atTarget = targetRows.every(
+    (assignmentRows) => assignmentRows.length === 1,
+  );
+  const stateRows = atTarget
+    ? targetRows.flat()
+    : manifest.assignments.flatMap((assignment) =>
+        getAssignmentRows(assignment, assignment.sourcePrinting),
+      );
+  const involvedVariantIds = [
+    ...new Set(stateRows.map((row) => String(row.variant_id))),
+  ];
   const collectionSnapshot = await getCollectionSnapshot(
     database,
     involvedVariantIds,
   );
 
   if (atTarget) {
-    for (const assignment of manifest.assignments) {
+    for (const [index, assignment] of manifest.assignments.entries()) {
       verifyProductEvidence(
         assignment,
-        rowsByProductId.get(assignment.productId),
+        targetRows[index][0],
       );
     }
 
@@ -519,14 +709,14 @@ async function buildRepairPlan(database) {
   }
 
   const assignments = manifest.assignments.map((assignment) => {
-    const row = rowsByProductId.get(assignment.productId);
+    const assignmentRows = getAssignmentRows(
+      assignment,
+      assignment.sourcePrinting,
+    );
+    const row = assignmentRows[0];
 
     if (
-      row?.card_provider_id !== assignment.cardProviderId ||
-      row.printing !== assignment.sourcePrinting ||
-      row.condition !== "unspecified" ||
-      row.language_code !== "en" ||
-      row.set_provider_id !== assignment.setProviderId
+      assignmentRows.length !== 1
     ) {
       throw new Error(
         `Repair is partially applied or drifted for product ${assignment.productId}.`,
@@ -544,6 +734,7 @@ async function buildRepairPlan(database) {
           productName:
             assignment.productName ??
             row.metadata?.tcgcsvProductName,
+          sourcePrinting: assignment.sourcePrinting,
         }).qualifier,
       refId: String(row.ref_id),
       sourceVariantId: String(row.variant_id),
@@ -638,8 +829,10 @@ async function buildRepairPlan(database) {
   if (
     collectionSnapshot.collectionRows !== 0 ||
     collectionSnapshot.quantityHistoryRows !== 0 ||
-    priceCounts.current_price_rows !== 0 ||
-    priceCounts.series_rows !== 0
+    (!manifest.clearSourceCurrentPrices &&
+      priceCounts.current_price_rows !== 0) ||
+    (!manifest.clearSourceHistory &&
+      priceCounts.series_rows !== 0)
   ) {
     throw new Error(
       "Reviewed source variants are no longer empty of collections or prices.",
@@ -680,9 +873,6 @@ function createPlanFingerprint(assignments) {
 }
 
 async function writeBeforeStateSnapshot(plan) {
-  const productIds = manifest.assignments.map(
-    (assignment) => assignment.productId,
-  );
   const destinationCardIds = [
     ...new Set(
       plan.destinations.map((destination) => destination.cardId),
@@ -711,10 +901,8 @@ async function writeBeforeStateSnapshot(plan) {
     sql`
       select to_jsonb(card_variant_external_refs.*) as row
       from card_variant_external_refs
-      where source = 'tcgplayer'
-        and ref_type = 'product_id'
-        and ref_value in ${sql(productIds)}
-      order by ref_value
+      where card_variant_id in ${sql(plan.sourceVariantIds)}
+      order by ref_value, id
     `,
     destinationCardIds.length === 0
       ? []
@@ -768,8 +956,8 @@ async function writeBeforeStateSnapshot(plan) {
     state.destinationVariants.length !== 0 ||
     state.collectionItems.length !== 0 ||
     state.quantityHistory.length !== 0 ||
-    state.currentPrices.length !== 0 ||
-    state.priceSeries.length !== 0
+    state.currentPrices.length !== plan.sourcePriceRowCount ||
+    state.priceSeries.length !== plan.sourceSeriesRowCount
   ) {
     throw new Error(
       "The exact pre-repair row snapshot does not match the reviewed plan.",
@@ -843,6 +1031,7 @@ function verifyProductEvidence(assignment, row) {
     groupId: assignment.groupId,
     productId: assignment.productId,
     productName,
+    sourcePrinting: assignment.sourcePrinting,
   });
   const classifiedPrinting =
     classification.status === "qualified"
@@ -860,10 +1049,11 @@ function verifyProductEvidence(assignment, row) {
     (assignment.productName &&
       recordedProductName &&
       recordedProductName !== assignment.productName) ||
-    !doesTcgcsvProductNameMatchCard({
-      cardName: row.card_name,
-      productName,
-    }) ||
+    (!assignment.productName &&
+      !doesTcgcsvProductNameMatchCard({
+        cardName: row.card_name,
+        productName,
+      })) ||
     (productNumber &&
       normalizeTcgcsvCollectorNumber(productNumber) !==
         normalizeTcgcsvCollectorNumber(row.card_number)) ||

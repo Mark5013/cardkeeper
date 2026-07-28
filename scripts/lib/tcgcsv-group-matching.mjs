@@ -51,6 +51,7 @@ export function normalizeTcgcsvCardName(value, { stripQualifiers = false } = {})
   const normalizedValue = String(value ?? "")
     .replace(/δ/gi, " delta ")
     .replace(/[★☆]/g, " star ")
+    .replace(/\u25c7/g, " prism star ")
     .replace(/♀/g, " f ")
     .replace(/♂/g, " m ");
   const withoutQualifiers = stripQualifiers

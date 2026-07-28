@@ -50,4 +50,10 @@ test("formats reviewed promo printing identities and retains their source subtyp
     getQualifiedPrintingSourcePrinting("world_championships_normal"),
     "normal",
   );
+  assert.equal(
+    getQualifiedPrintingSourcePrinting(
+      "pokemon_league_reverse_holofoil",
+    ),
+    "reverse_holofoil",
+  );
 });

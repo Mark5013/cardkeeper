@@ -321,6 +321,12 @@ function createVisibleFinish(printing) {
 function getQualifiedPrintingSourcePrinting(value) {
   const printing = normalizeProviderPrinting(value);
 
+  if (
+    printing === "reverse_holofoil" ||
+    printing.endsWith("_reverse_holofoil")
+  ) {
+    return "reverse_holofoil";
+  }
   if (printing.endsWith("_holofoil")) return "holofoil";
   if (printing.endsWith("_normal")) return "normal";
 
@@ -379,6 +385,8 @@ function normalizeVariant(variant) {
     condition: variant.condition,
     languageCode: variant.languageCode,
     externalVariantId: variant.externalVariantId ?? null,
+    collectionItemCount: Number(variant.collectionItemCount ?? 0),
+    quantityHistoryCount: Number(variant.quantityHistoryCount ?? 0),
     tcgplayerProductRefTrust: refSummary,
     tcgplayerProductRefs,
     tcgcsvCurrentPrices,

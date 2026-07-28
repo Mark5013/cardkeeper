@@ -119,6 +119,16 @@ async function readDatabaseSnapshot() {
         variant.external_variant_id,
         variant.created_at,
         variant.updated_at,
+        (
+          select count(*)::integer
+          from collection_items as collection_item
+          where collection_item.card_variant_id = variant.id
+        ) as collection_item_count,
+        (
+          select count(*)::integer
+          from collection_quantity_history as quantity_history
+          where quantity_history.card_variant_id = variant.id
+        ) as quantity_history_count,
         coalesce(
           (
             select jsonb_agg(
@@ -201,12 +211,14 @@ async function readDatabaseSnapshot() {
     }));
     const localVariants = variantRows.map((row) => ({
       cardId: String(row.card_id),
+      collectionItemCount: row.collection_item_count,
       condition: row.condition,
       createdAt: row.created_at,
       externalVariantId: row.external_variant_id,
       id: String(row.id),
       languageCode: row.language_code,
       printing: row.printing,
+      quantityHistoryCount: row.quantity_history_count,
       tcgcsvCurrentPrices: row.tcgcsv_current_prices ?? [],
       tcgcsvPriceSeries: row.tcgcsv_price_series ?? [],
       tcgplayerProductRefs: row.tcgplayer_product_refs ?? [],

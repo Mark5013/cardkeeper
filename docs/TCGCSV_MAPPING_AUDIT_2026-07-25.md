@@ -2,6 +2,14 @@
 
 ## Status
 
+The English card mapping closeout was completed on 2026-07-27. The final
+database-only audit reports zero multiple-product-ref gaps and zero missing
+product refs. Seventy-nine remaining finish gaps have one exact trusted
+product whose latest TCGCSV market value is null. The only remaining structural
+gap is Lokix `sv7-16` Holofoil: the catalog advertises that finish, while
+TCGCSV product `567242` publishes only Normal and Reverse Holofoil. No Holofoil
+variant or price was fabricated.
+
 The Pikachu `np-35` mapping is repaired in the database, and current English
 pricing now fails closed when a card finish cannot be tied to exactly one valid
 TCGplayer product. Poké Ball Pattern, Master Ball Pattern, and the reviewed
@@ -302,18 +310,79 @@ The zero-request database-only audit now reports:
 - 163 wholly unpriced cards and 79 cards with partial finish coverage.
 
 The refresh also found a separate exact Worlds 2013 plus Staff pair on
-Champions Festival `bwp-BW95`. Its prior current price was invalidated when the
-second product ref made the generic Normal identity ambiguous; it remains
-unpriced pending its own qualified-printing repair.
+Champions Festival `bwp-BW95`. That identity was resolved in the final English
+closeout below.
+
+## Final English closeout and history rebuild â€” 2026-07-27
+
+Three exact, fail-closed qualified-printing manifests completed the remaining
+English card mappings:
+
+- `tcgcsv-english-qualified-printing-repairs-2026-07-27.json` reviewed 213
+  exact products on 86 cards, including Champions Festival, league and
+  championship placements, alternate holo patterns, stamped promos, deck
+  printings, and World Championships identities.
+- `tcgcsv-english-qualified-printing-followup-2026-07-27.json` split ordinary
+  and Cosmos Holo Slowking `xy9-21`.
+- `tcgcsv-english-qualified-printing-final-2026-07-27.json` reviewed 27 product
+  placements on seven cards. It resolved Steam Siege tournament printings and
+  modeled Aquapolis `a`/`b` artwork identities plus the High Plains and Meadow
+  Vivillon forms across their exact source finishes.
+
+The final manifest permits the same product ID on two reviewed source finishes
+only when the product, group, card, source finish, and destination printing all
+match its exact allowlist entry. Rollback rehearsal passed before each
+production apply. The final seven-card batch created 24 qualified/form variants,
+moved 24 refs, retired eight empty ambiguous variants, and found zero collection
+or quantity-history rows on its sources.
+
+Two Morpeko V-UNION set-of-four bundle products, `268450` and `495215`, were
+removed again after a scoped refresh rediscovered them. The nightly importer
+now excludes those exact bundle IDs, so they cannot be reattached to one card.
+Prism Star name normalization also recognizes the catalog's `◇` symbol as
+TCGplayer's `Prism Star`, eliminating 21 false stale-ref warnings.
+
+The validated 24-group refresh prepared and wrote 4,153 current observations.
+A final five-group refresh prepared and wrote 1,222 observations for the form,
+tournament, and bundle changes. Both completed with zero high-confidence stale
+refs.
+
+The final immutable database-only audit is
+`.artifacts/tcgcsv/tcgcsv-missing-price-gaps-2026-07-27-71099ab67d8b.json`
+with fingerprint
+`71099ab67d8b1ec762e67c7f2250372c80f73fe22194bd1a824952b0aad344ef`:
+
+- 35,079 of 35,159 visible English finishes are priced;
+- 80 finish gaps remain across 29 sets;
+- zero multiple-ref gaps, zero missing refs, and zero other untrusted refs;
+- 79 exact singleton refs have no current TCGCSV market value; and
+- one catalog-only Holofoil finish lacks a matching TCGCSV subtype: Lokix
+  `sv7-16`.
+
+Historical staging used a new mapping-fingerprinted recovery directory and
+`--reset-stage`. It processed all 901 archives from 2024-02-08 through
+2026-07-27. The atomic upload replaced 35,099 prior TCGCSV series with 34,791
+safe series containing 7,208,900 changed prices and synchronized 34,730
+existing current rows to the latest completed archive. It did not create
+current rows for products with null current markets. In-transaction and
+independent post-commit verification both passed. The retained stage uses
+mapping policy `single-positive-product-ref-qualified-printing-v4` and mapping
+fingerprint
+`b54d46d8083a4b8183d29a315ad8c4536a6b6ecdb17ee5d1b1d743e94185f9a0`.
+
+This final phase made 1,064 TCGCSV requests, including the 901 archive
+downloads. Exact product-name discovery used TCGplayer's first-party product
+search separately. No full provider pull was repeated after the final
+same-build verification.
 
 ## Remaining work before JP and sealed expansion
 
 The database-first investigation sequence is documented in
 [`TCGCSV_MISSING_PRICE_DISCOVERY_PLAN_2026-07-25.md`](./TCGCSV_MISSING_PRICE_DISCOVERY_PLAN_2026-07-25.md).
 
-1. Continue modeling physical qualifiers explicitly. Remaining examples include
-   unreviewed Staff and Prerelease products, league placement, Energy Symbol
-   Pattern, metal cards, and alternate holo patterns.
+1. Treat the Lokix `sv7-16` Holofoil mismatch as an upstream catalog/TCGCSV
+   discrepancy unless TCGCSV begins publishing that subtype. Do not synthesize
+   a variant or copy a price from another finish.
 2. Review and retire static history quarantine cutoffs only when their repaired
    series have enough verified post-repair history for the intended UI window.
 3. Add language-aware card, variant, price, and marketplace-link identities.
@@ -357,6 +426,11 @@ npm run prices:repair-promo-prerelease
 npm run prices:repair-promo-prerelease -- --rollback
 npm run prices:repair-promo-prerelease -- --apply
 
+# Applied final English qualified-printing/form repairs:
+npm run prices:repair-english-closeout
+npm run prices:repair-english-followup
+npm run prices:repair-english-final
+
 # Routine daily refresh:
 npm run prices:refresh -- --skip-if-current
 
@@ -367,6 +441,10 @@ npm run prices:refresh -- --group-ids=1407,1451,1861,2545
 npm run prices:backfill -- --from=2024-02-08 --to=YYYY-MM-DD --reset-stage --stage-only --verify-legacy --temp-dir=<new-recovery-directory>
 npm run prices:backfill -- --from=2024-02-08 --to=YYYY-MM-DD --temp-dir=<same-recovery-directory>
 npm run prices:backfill -- --from=2024-02-08 --to=YYYY-MM-DD --verify-upload --temp-dir=<same-recovery-directory>
+
+# If scoped refreshes left existing current rows older than the latest staged
+# archive, synchronize only those existing rows in the atomic upload:
+npm run prices:backfill -- --from=2024-02-08 --to=YYYY-MM-DD --verify-legacy --sync-current --temp-dir=<same-recovery-directory>
 ```
 
 Operational notes:
@@ -377,5 +455,6 @@ Operational notes:
 - If an immediate same-build post-repair refresh is explicitly necessary, it must omit `--skip-if-current`; account for that extra full pull under TCGCSV’s rules.
 - Use `--reset-stage` whenever product refs or physical-qualifier mappings intentionally change. The stage stores both the mapping-policy version and a fingerprint of the exact eligible database mapping; it refuses to resume or upload when either differs.
 - `--verify-upload` verifies an existing upload; it does not perform the upload. The command without `--stage-only` or `--verify-upload` performs the transactional replacement.
+- `--sync-current` is permitted only on an upload with `--verify-legacy`, and only when `--to` is TCGCSV's latest completed archive. It updates existing current rows atomically from the staged latest values; it never creates a current row for a product absent from the latest current table.
 - Keep ref-changing audit, repair, and refresh jobs stopped during a historical staging run. The script rechecks the mapping after staging and immediately before upload. The replacement transaction then takes shared locks on the variant and external-ref tables before its final fingerprint check, so mapping writes cannot race the upload.
 - The checked-in repair plan is `scripts/data/tcgcsv-mapping-repairs-2026-07-25.json`. It is idempotent only when all reviewed refs are present or all are already absent; a partially applied state fails closed.
