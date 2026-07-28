@@ -50,6 +50,48 @@ try {
       ) as japanese_price_series,
       (
         select count(*)::integer
+        from price_series as series
+        inner join card_variants as variant
+          on variant.id = series.card_variant_id
+        where variant.language_code = 'ja'
+          and series.source = 'tcgcsv'
+          and series.price_type = 'market'
+          and series.currency = 'USD'
+      ) as japanese_market_price_series,
+      (
+        select coalesce(sum(cardinality(series.observed_on)), 0)::bigint
+        from price_series as series
+        inner join card_variants as variant
+          on variant.id = series.card_variant_id
+        where variant.language_code = 'ja'
+          and series.source = 'tcgcsv'
+          and series.price_type = 'market'
+          and series.currency = 'USD'
+      ) as japanese_market_price_changes,
+      (
+        select min(series.observed_on[1])::text
+        from price_series as series
+        inner join card_variants as variant
+          on variant.id = series.card_variant_id
+        where variant.language_code = 'ja'
+          and series.source = 'tcgcsv'
+          and series.price_type = 'market'
+          and series.currency = 'USD'
+      ) as japanese_market_price_earliest,
+      (
+        select max(
+          series.observed_on[cardinality(series.observed_on)]
+        )::text
+        from price_series as series
+        inner join card_variants as variant
+          on variant.id = series.card_variant_id
+        where variant.language_code = 'ja'
+          and series.source = 'tcgcsv'
+          and series.price_type = 'market'
+          and series.currency = 'USD'
+      ) as japanese_market_price_latest,
+      (
+        select count(*)::integer
         from sealed_products
         where language_code = 'en' and is_active
       ) as english_sealed_products,
@@ -85,7 +127,49 @@ try {
         select count(*)::integer
         from sealed_price_series
         where source = 'tcgcsv'
-      ) as sealed_price_series
+      ) as sealed_price_series,
+      (
+        select count(*)::integer
+        from sealed_price_series as series
+        inner join sealed_products as product
+          on product.id = series.sealed_product_id
+        where series.source = 'tcgcsv'
+          and series.price_type = 'market'
+          and series.currency = 'USD'
+          and product.category_id in (3, 85)
+      ) as sealed_market_price_series,
+      (
+        select coalesce(sum(cardinality(series.observed_on)), 0)::bigint
+        from sealed_price_series as series
+        inner join sealed_products as product
+          on product.id = series.sealed_product_id
+        where series.source = 'tcgcsv'
+          and series.price_type = 'market'
+          and series.currency = 'USD'
+          and product.category_id in (3, 85)
+      ) as sealed_market_price_changes,
+      (
+        select min(series.observed_on[1])::text
+        from sealed_price_series as series
+        inner join sealed_products as product
+          on product.id = series.sealed_product_id
+        where series.source = 'tcgcsv'
+          and series.price_type = 'market'
+          and series.currency = 'USD'
+          and product.category_id in (3, 85)
+      ) as sealed_market_price_earliest,
+      (
+        select max(
+          series.observed_on[cardinality(series.observed_on)]
+        )::text
+        from sealed_price_series as series
+        inner join sealed_products as product
+          on product.id = series.sealed_product_id
+        where series.source = 'tcgcsv'
+          and series.price_type = 'market'
+          and series.currency = 'USD'
+          and product.category_id in (3, 85)
+      ) as sealed_market_price_latest
   `;
   const [integrity] = await sql`
     select
@@ -135,6 +219,84 @@ try {
           array(select distinct unnest(observed_on))
         )
       ) as duplicate_sealed_series_days,
+      (
+        select count(*)::integer
+        from price_series as series
+        inner join card_variants as variant
+          on variant.id = series.card_variant_id
+        where variant.language_code = 'ja'
+          and series.source = 'tcgcsv'
+          and series.price_type = 'market'
+          and series.currency = 'USD'
+          and exists (
+            select 1
+            from generate_subscripts(series.observed_on, 1)
+              as indices(idx)
+            where indices.idx < cardinality(series.observed_on)
+              and series.observed_on[indices.idx] >=
+                series.observed_on[indices.idx + 1]
+          )
+      ) as unordered_japanese_market_series,
+      (
+        select count(*)::integer
+        from sealed_price_series as series
+        inner join sealed_products as product
+          on product.id = series.sealed_product_id
+        where series.source = 'tcgcsv'
+          and series.price_type = 'market'
+          and series.currency = 'USD'
+          and product.category_id in (3, 85)
+          and exists (
+            select 1
+            from generate_subscripts(series.observed_on, 1)
+              as indices(idx)
+            where indices.idx < cardinality(series.observed_on)
+              and series.observed_on[indices.idx] >=
+                series.observed_on[indices.idx + 1]
+          )
+      ) as unordered_sealed_market_series,
+      (
+        select count(*)::integer
+        from current_prices as price
+        inner join card_variants as variant
+          on variant.id = price.card_variant_id
+        left join price_series as series
+          on series.card_variant_id = price.card_variant_id
+          and series.source = price.source
+          and series.price_type = price.price_type
+          and series.currency = price.currency
+        where variant.language_code = 'ja'
+          and price.source = 'tcgcsv'
+          and price.price_type = 'market'
+          and price.currency = 'USD'
+          and (
+            series.card_variant_id is null
+            or series.amounts_minor[
+              cardinality(series.amounts_minor)
+            ] <> price.amount_minor
+          )
+      ) as japanese_current_market_mismatches,
+      (
+        select count(*)::integer
+        from sealed_current_prices as price
+        inner join sealed_products as product
+          on product.id = price.sealed_product_id
+        left join sealed_price_series as series
+          on series.sealed_product_id = price.sealed_product_id
+          and series.source = price.source
+          and series.price_type = price.price_type
+          and series.currency = price.currency
+        where product.category_id in (3, 85)
+          and price.source = 'tcgcsv'
+          and price.price_type = 'market'
+          and price.currency = 'USD'
+          and (
+            series.sealed_product_id is null
+            or series.amounts_minor[
+              cardinality(series.amounts_minor)
+            ] <> price.amount_minor
+          )
+      ) as sealed_current_market_mismatches,
       (
         select count(*)::integer
         from sealed_products

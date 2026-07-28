@@ -33,6 +33,7 @@
     "prices:repair-english-final": "node scripts/repair-sv-promo-printings.mjs --batch=english-final",
     "prices:repair-catalog-refs": "node scripts/repair-catalog-product-refs.mjs",
     "prices:backfill": "node scripts/backfill-prices-tcgcsv.mjs",
+    "prices:backfill-expanded": "node scripts/backfill-tcgcsv-expanded-history.mjs",
     "db:test-rls": "node scripts/test-rls.mjs",
     "db:push": "drizzle-kit push",
     "db:studio": "drizzle-kit studio"

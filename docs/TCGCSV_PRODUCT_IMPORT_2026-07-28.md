@@ -137,7 +137,11 @@ expansion: 35,079/35,159 visible finishes priced, zero multiple refs, zero
 missing refs, 79 exact products with no current market value, and the one
 documented Lokix provider discrepancy.
 
-The first import seeds current and compressed history with the current TCGCSV
-build. Scheduled changed builds append price changes going forward. Historical
-archives from before this first import have not been backfilled for Japanese
-cards or sealed products.
+The first import seeded current and compressed history with the current TCGCSV
+build. Scheduled changed builds append price changes going forward. The
+historical market-price archives were subsequently backfilled for Japanese
+cards and English/Japanese sealed products across all 901 available days from
+2024-02-08 through 2026-07-27. See
+[`TCGCSV_EXPANDED_HISTORICAL_PRICE_IMPORT_2026-07-28.md`](./TCGCSV_EXPANDED_HISTORICAL_PRICE_IMPORT_2026-07-28.md)
+for the exact series counts, identity rules, rollback rehearsal, upload, and
+post-commit verification.

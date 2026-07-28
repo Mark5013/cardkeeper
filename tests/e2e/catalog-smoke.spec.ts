@@ -30,6 +30,26 @@ test("search result opens a card detail page with prices and collection prompt",
   await expect(page.getByRole("link", { name: "Sign in to add" })).toBeVisible();
 });
 
+test("Japanese cards and sealed products expose recorded price history", async ({
+  page,
+}) => {
+  for (const path of [
+    "/cards/tcgplayer-85-674320",
+    "/sealed/502000",
+    "/sealed/603428",
+  ]) {
+    await page.goto(path);
+
+    await expect(
+      page.getByRole("heading", { name: "Price history" }),
+    ).toBeVisible();
+    await expect(
+      page.getByRole("group", { name: "Price history range" }),
+    ).toBeVisible();
+    await expect(page.getByText(/recorded price values?/i)).toBeVisible();
+  }
+});
+
 test("collection page redirects anonymous users to login with next path", async ({ page }) => {
   await page.goto("/collection");
 
