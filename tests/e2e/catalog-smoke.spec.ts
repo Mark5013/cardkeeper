@@ -37,6 +37,24 @@ test("collection page redirects anonymous users to login with next path", async 
   await expect(page.getByRole("heading", { name: /sign in/i })).toBeVisible();
 });
 
+test("card sets filter with the styled language menu", async ({ page }) => {
+  await page.goto("/sets");
+
+  const setLinks = page.locator('a[href^="/sets/"]');
+  const englishSets = setLinks.filter({ hasText: "English" });
+  const japaneseSets = setLinks.filter({ hasText: "Japanese" });
+  await expect.poll(async () => englishSets.count()).toBeGreaterThan(0);
+  await expect.poll(async () => japaneseSets.count()).toBeGreaterThan(0);
+
+  const languageMenu = page.getByRole("button", { name: "Language" });
+  await languageMenu.click();
+  await page.getByRole("menuitemradio", { name: "Japanese" }).click();
+
+  await expect(languageMenu).toContainText("Japanese");
+  await expect(englishSets).toHaveCount(0);
+  await expect.poll(async () => japaneseSets.count()).toBeGreaterThan(0);
+});
+
 test("sealed sets scroll continuously and filter with the styled language menu", async ({
   page,
 }) => {

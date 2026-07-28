@@ -4,12 +4,21 @@ import Image from "next/image";
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 
+import { FieldSelect } from "@/components/ui/field-select";
 import type { PokemonTcgSet } from "@/lib/pokemon-tcg/types";
 
 type SetsBrowserProps = {
   sets: PokemonTcgSet[];
   collectionProgress?: Record<string, number> | null;
 };
+
+type LanguageFilter = "all" | "en" | "ja";
+
+const languageOptions = [
+  { value: "all", label: "All languages" },
+  { value: "en", label: "English" },
+  { value: "ja", label: "Japanese" },
+] as const;
 
 function normalizeSearchText(value: string) {
   return value
@@ -41,11 +50,18 @@ function setMatchesQuery(set: PokemonTcgSet, normalizedQuery: string) {
 
 export function SetsBrowser({ sets, collectionProgress }: SetsBrowserProps) {
   const [query, setQuery] = useState("");
+  const [language, setLanguage] = useState<LanguageFilter>("all");
   const [currentCollectionProgress, setCurrentCollectionProgress] = useState(collectionProgress);
   const normalizedQuery = normalizeSearchText(query);
   const filteredSets = useMemo(
-    () => sets.filter((set) => setMatchesQuery(set, normalizedQuery)),
-    [normalizedQuery, sets],
+    () =>
+      sets.filter(
+        (set) =>
+          (language === "all" ||
+            (set.languageCode === "ja" ? "ja" : "en") === language) &&
+          setMatchesQuery(set, normalizedQuery),
+      ),
+    [language, normalizedQuery, sets],
   );
 
   useEffect(() => {
@@ -80,8 +96,8 @@ export function SetsBrowser({ sets, collectionProgress }: SetsBrowserProps) {
 
   return (
     <section className="mt-10">
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
-        <label className="block w-full max-w-xl">
+      <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_12rem] lg:grid-cols-[minmax(0,1fr)_12rem_auto] lg:items-end">
+        <label className="block">
           <span className="auth-label">Find a set</span>
           <input
             className="auth-input"
@@ -92,7 +108,16 @@ export function SetsBrowser({ sets, collectionProgress }: SetsBrowserProps) {
             autoComplete="off"
           />
         </label>
-        <p className="text-sm font-semibold text-[var(--muted)]">
+        <label className="block">
+          <span className="auth-label">Language</span>
+          <FieldSelect
+            label="Language"
+            options={languageOptions}
+            value={language}
+            onValueChange={setLanguage}
+          />
+        </label>
+        <p className="text-sm font-semibold text-[var(--muted)] sm:col-span-2 lg:col-span-1 lg:pb-3">
           {filteredSets.length.toLocaleString()} / {sets.length.toLocaleString()} sets
         </p>
       </div>
@@ -142,7 +167,9 @@ export function SetsBrowser({ sets, collectionProgress }: SetsBrowserProps) {
       ) : (
         <div className="mt-6 rounded-lg border border-dashed border-[var(--line)] bg-[var(--surface)] px-6 py-12 text-center">
           <h2 className="text-xl font-bold">No sets found</h2>
-          <p className="mt-2 text-[var(--muted)]">Try a different set name, series, or year.</p>
+          <p className="mt-2 text-[var(--muted)]">
+            Try a different set name, language, series, or year.
+          </p>
         </div>
       )}
     </section>
