@@ -4,6 +4,7 @@ import test from "node:test";
 import {
   buildPriceRows,
   classifyTcgcsvProduct,
+  getCardNumber,
   getCardNumberDenominator,
   normalizeTcgcsvPrinting,
 } from "../../scripts/lib/tcgcsv-product-import.mjs";
@@ -42,6 +43,17 @@ test("classifies unnumbered rarity-bearing products as cards", () => {
       extendedData: [{ name: "Rarity", value: "Promo" }],
     }),
     "card",
+  );
+});
+
+test("stores a stable label when the provider omits a collector number", () => {
+  assert.equal(
+    getCardNumber({
+      productId: 617431,
+      name: "Venusaur (Trade Please campaign)",
+      extendedData: [{ name: "Rarity", value: "None" }],
+    }),
+    "Unnumbered",
   );
 });
 

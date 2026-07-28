@@ -4,13 +4,14 @@ import Link from "next/link";
 import { ImageWithFallback } from "@/components/image-with-fallback";
 import { SiteHeader } from "@/components/site-header";
 import {
-  getSealedCatalogPage,
-  type SealedCatalogProduct,
+  getSealedCatalogSetsPage,
+  type SealedCatalogSet,
 } from "@/lib/catalog/sealed-data";
 
 export const metadata: Metadata = {
-  title: "Sealed products",
-  description: "Browse English and Japanese sealed Pokémon TCG products.",
+  title: "Sealed sets",
+  description:
+    "Browse English and Japanese sealed Pokémon TCG products grouped by set.",
 };
 
 const usd = new Intl.NumberFormat("en-US", {
@@ -35,38 +36,44 @@ function buildPageHref(input: {
   return queryString ? `/sealed?${queryString}` : "/sealed";
 }
 
-function SealedProductCard({ product }: { product: SealedCatalogProduct }) {
+function SealedSetCard({ set }: { set: SealedCatalogSet }) {
   return (
     <Link
       className="group overflow-hidden rounded-lg border border-[var(--line)] bg-[var(--surface)] p-5 transition duration-200 hover:-translate-y-1 hover:border-[var(--secondary)]"
-      href={`/sealed/${encodeURIComponent(product.id)}`}
+      href={`/sealed/sets/${set.categoryId}/${set.groupId}`}
       prefetch={false}
     >
       <div className="relative aspect-square overflow-hidden rounded-md bg-white/95">
         <ImageWithFallback
-          src={product.imageUrl}
-          alt={product.name}
+          src={set.imageUrl}
+          alt=""
           fill
           sizes="(max-width: 640px) 90vw, 280px"
           className="object-contain p-3 transition duration-300 group-hover:scale-[1.03]"
         />
       </div>
       <p className="mt-5 text-xs font-semibold uppercase tracking-[0.12em] text-[var(--accent)]">
-        {product.languageCode === "ja" ? "Japanese" : "English"}
-        {product.isPresale ? " · Presale" : ""}
+        {set.languageCode === "ja" ? "Japanese" : "English"}
+        {set.isPresale ? " · Presale" : ""}
       </p>
-      <h2 className="mt-2 text-lg font-bold">{product.name}</h2>
-      <p className="mt-2 text-sm text-[var(--muted)]">{product.groupName}</p>
+      <h2 className="mt-2 text-lg font-bold">{set.name}</h2>
+      <p className="mt-2 text-sm text-[var(--muted)]">
+        {set.productCount.toLocaleString()}{" "}
+        {set.productCount === 1 ? "product" : "products"}
+        {set.pricedProductCount > 0
+          ? ` · ${set.pricedProductCount.toLocaleString()} priced`
+          : ""}
+      </p>
       <p className="mt-4 font-bold text-[var(--secondary)]">
-        {product.marketPriceUsd === null
-          ? "No current market price"
-          : usd.format(product.marketPriceUsd)}
+        {set.startingPriceUsd === null
+          ? "No current market prices"
+          : `From ${usd.format(set.startingPriceUsd)}`}
       </p>
     </Link>
   );
 }
 
-export default async function SealedProductsPage({
+export default async function SealedSetsPage({
   searchParams,
 }: {
   searchParams: Promise<{
@@ -84,7 +91,7 @@ export default async function SealedProductsPage({
       : "all";
   const rawPage = Number(firstParam(params.page));
   const page = Number.isInteger(rawPage) && rawPage > 0 ? rawPage : 1;
-  const result = await getSealedCatalogPage({
+  const result = await getSealedCatalogSetsPage({
     query,
     languageCode: language,
     page,
@@ -98,11 +105,11 @@ export default async function SealedProductsPage({
       <section className="mx-auto w-full max-w-6xl px-6 pb-20 pt-8 lg:px-8">
         <p className="eyebrow">Sealed catalog</p>
         <h1 className="mt-4 text-4xl font-bold sm:text-5xl">
-          English and Japanese sealed products
+          English and Japanese sealed sets
         </h1>
         <p className="mt-4 max-w-3xl text-lg leading-8 text-[var(--muted)]">
           Browse boxes, packs, tins, collections, and other physical sealed
-          Pokémon TCG products with current TCGplayer market prices.
+          Pokémon TCG products grouped by their TCGplayer set.
         </p>
 
         <form
@@ -110,12 +117,12 @@ export default async function SealedProductsPage({
           className="mt-8 grid gap-3 rounded-lg border border-[var(--line)] bg-[var(--surface)] p-4 sm:grid-cols-[minmax(0,1fr)_12rem_auto]"
         >
           <label>
-            <span className="auth-label">Find sealed products</span>
+            <span className="auth-label">Find sealed sets</span>
             <input
               className="auth-input"
               defaultValue={query}
               name="query"
-              placeholder="Booster box, Elite Trainer Box…"
+              placeholder="Prismatic Evolutions, Mega Dream…"
               type="search"
             />
           </label>
@@ -135,7 +142,7 @@ export default async function SealedProductsPage({
         <div className="mt-8 flex items-end justify-between gap-4">
           <h2 className="text-2xl font-bold">
             {result.totalCount.toLocaleString()}{" "}
-            {result.totalCount === 1 ? "product" : "products"}
+            {result.totalCount === 1 ? "set" : "sets"}
           </h2>
           {result.totalPages > 0 ? (
             <p className="text-sm font-semibold text-[var(--muted)]">
@@ -145,24 +152,24 @@ export default async function SealedProductsPage({
           ) : null}
         </div>
 
-        {result.products.length > 0 ? (
+        {result.sets.length > 0 ? (
           <div className="mt-6 grid gap-5 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-            {result.products.map((product) => (
-              <SealedProductCard
-                key={`${product.categoryId}:${product.id}`}
-                product={product}
+            {result.sets.map((set) => (
+              <SealedSetCard
+                key={`${set.categoryId}:${set.groupId}`}
+                set={set}
               />
             ))}
           </div>
         ) : (
           <div className="mt-6 rounded-lg border border-dashed border-[var(--line)] p-10 text-center text-[var(--muted)]">
-            No sealed products matched this search.
+            No sealed sets matched this search.
           </div>
         )}
 
         {result.totalPages > 1 ? (
           <nav
-            aria-label="Sealed product pages"
+            aria-label="Sealed set pages"
             className="mt-10 flex items-center justify-center gap-3"
           >
             {result.page > 1 ? (

@@ -4,6 +4,7 @@ import { CardSearch } from "@/components/card-search";
 import { ImageWithFallback } from "@/components/image-with-fallback";
 import { SiteHeader } from "@/components/site-header";
 import { getWeeklyMarketMovers } from "@/lib/catalog/market-movers";
+import { formatCardNumber } from "@/lib/pokemon-tcg/card-number";
 
 export const revalidate = 3_600;
 
@@ -123,7 +124,7 @@ export default async function Home() {
                         {mover.name}
                       </h3>
                       <p className="mt-1 text-xs leading-5 text-[var(--muted)]">
-                        #{mover.number} · {mover.printingLabel}
+                        {formatCardNumber(mover.number)} · {mover.printingLabel}
                       </p>
                       <p className="mt-3 text-lg font-black text-[var(--ink)]">
                         {usd.format(mover.currentPriceUsd)}

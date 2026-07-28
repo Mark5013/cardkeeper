@@ -50,7 +50,10 @@ language and TCGplayer category identities.
   labels.
 - Japanese card details, exact finish prices, price history, collection
   controls, and Japanese TCGplayer listing URLs use the Japanese identity.
-- `/sealed` provides language-filtered sealed search and pagination.
+- `/sealed` groups sealed products into language-filtered TCGplayer sets with
+  set-name search and pagination.
+- `/sealed/sets/{categoryId}/{groupId}` provides the products within one sealed
+  set, including product-name search and pagination.
 - `/sealed/{productId}` provides product details, current low/mid/high/market
   values, price history, and the exact TCGplayer listing.
 
@@ -85,18 +88,34 @@ build changed, and runs the independent integrity verifier.
 
 ## Verification
 
+The follow-up catalog audit found 2,442 Japanese cards whose TCGplayer source
+omits a collector number. Of those, 2,429 have direct gameplay metadata and
+the remaining 13 resolve as real cards from their exact product and group
+identities. None were sealed products and none had collection rows. The repair
+normalized all 2,442 stored values from synthetic
+`Unnumbered-{tcgplayerProductId}` strings to `Unnumbered`; the application now
+displays that label without a misleading `#` and omits it from marketplace
+search terms.
+
+The sealed catalog now groups 1,970 English products into 169 sets and 301
+Japanese products into 152 sets. Group identity is the existing TCGplayer
+`categoryId` plus `groupId`; no lossy name-only grouping or schema migration is
+required.
+
 `catalog:verify-tcgcsv-products` reported zero:
 
 - card/variant language mismatches;
 - Japanese variants without exactly one valid product ref;
 - malformed card or sealed series;
 - duplicate card or sealed series dates;
-- digital/code products in the sealed catalog; and
-- malformed Japanese provider payloads.
+- digital/code products in the sealed catalog;
+- malformed Japanese provider payloads;
+- synthetic Japanese unnumbered values; and
+- sealed sets with inconsistent language or name metadata.
 
 The rollback-only RLS suite passed 21/21 checks, including public reads and
 denied writes for sealed products and prices. Catalog search passed 10/10
-integration checks. Unit tests passed 125/125, and typecheck, lint, and the
+integration checks. Unit tests passed 128/128, and typecheck, lint, and the
 Next.js production build passed.
 
 The read-only English history upload verifier also continued to pass at
@@ -106,7 +125,8 @@ tools ignore the new Japanese series.
 Production smoke tests returned HTTP 200 for:
 
 - `/sealed`
-- `/sealed/673436`
+- `/sealed/sets/3/24722`
+- `/sealed/704150`
 - `/cards/tcgplayer-85-674320`
 - `/sets/tcgplayer-85-24600`
 

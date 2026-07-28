@@ -53,10 +53,7 @@ export function getJapaneseProviderCardId(productId) {
 }
 
 export function getCardNumber(product) {
-  return (
-    getExtendedDataValue(product, "Number") ||
-    `Unnumbered-${product.productId}`
-  );
+  return getExtendedDataValue(product, "Number") || "Unnumbered";
 }
 
 export function getCardNumberDenominator(number) {

@@ -8,6 +8,7 @@ import { FieldSelect } from "@/components/ui/field-select";
 import { QuantityAdjuster } from "@/components/ui/quantity-adjuster";
 import { CARD_CONDITIONS } from "@/lib/collection/options";
 import type { OwnedCardVariantDto } from "@/lib/collection/types";
+import { formatCardNumber } from "@/lib/pokemon-tcg/card-number";
 import type { CardSearchResult } from "@/lib/pokemon-tcg/types";
 
 type SaveResponse = {
@@ -143,7 +144,7 @@ export function QuickAddDialog({
               {card.name}
             </h2>
             <p className="mt-1 text-sm text-[var(--muted)]">
-              {card.set.name} - #{card.number}
+              {card.set.name} - {formatCardNumber(card.number)}
             </p>
           </div>
           <button className="quick-add-close" type="button" onClick={onClose} aria-label="Close quick add">

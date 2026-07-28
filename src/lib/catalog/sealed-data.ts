@@ -34,6 +34,28 @@ export type SealedCatalogPage = {
   totalPages: number;
 };
 
+export type SealedCatalogSet = {
+  categoryId: number;
+  groupId: number;
+  name: string;
+  languageCode: string;
+  imageUrl: string | null;
+  releaseDate: string | null;
+  isPresale: boolean;
+  productCount: number;
+  pricedProductCount: number;
+  startingPriceUsd: number | null;
+  priceUpdatedAt: string | null;
+};
+
+export type SealedCatalogSetsPage = {
+  sets: SealedCatalogSet[];
+  totalCount: number;
+  page: number;
+  pageSize: number;
+  totalPages: number;
+};
+
 export type SealedPriceHistoryPoint = {
   observedAt: string;
   amountUsd: number;
@@ -66,9 +88,228 @@ function mapProduct(row: {
   };
 }
 
+function mapSet(row: {
+  categoryId: number;
+  groupId: number;
+  name: string;
+  languageCode: string;
+  imageUrl: string | null;
+  releaseDate: string | null;
+  isPresale: boolean;
+  productCount: number;
+  pricedProductCount: number;
+  startingPriceMinor: number | null;
+  priceUpdatedAt: Date | string | null;
+}): SealedCatalogSet {
+  return {
+    categoryId: row.categoryId,
+    groupId: row.groupId,
+    name: row.name,
+    languageCode: row.languageCode,
+    imageUrl: row.imageUrl,
+    releaseDate: row.releaseDate,
+    isPresale: row.isPresale,
+    productCount: row.productCount,
+    pricedProductCount: row.pricedProductCount,
+    startingPriceUsd:
+      row.startingPriceMinor === null ? null : row.startingPriceMinor / 100,
+    priceUpdatedAt:
+      row.priceUpdatedAt instanceof Date
+        ? row.priceUpdatedAt.toISOString()
+        : row.priceUpdatedAt
+          ? new Date(row.priceUpdatedAt).toISOString()
+          : null,
+  };
+}
+
+export async function getSealedCatalogSetsPage(input?: {
+  query?: string;
+  languageCode?: "all" | "en" | "ja";
+  page?: number;
+  pageSize?: number;
+}): Promise<SealedCatalogSetsPage> {
+  const query = input?.query?.trim().slice(0, 100) ?? "";
+  const languageCode = input?.languageCode ?? "all";
+  const page = Math.max(1, input?.page ?? 1);
+  const pageSize = Math.min(60, Math.max(1, input?.pageSize ?? 24));
+  const offset = (page - 1) * pageSize;
+  const conditions = [eq(sealedProducts.isActive, true)];
+
+  if (languageCode !== "all") {
+    conditions.push(eq(sealedProducts.languageCode, languageCode));
+  }
+  if (query) {
+    const pattern = `%${query.replace(/[\\%_]/g, (value) => `\\${value}`)}%`;
+    conditions.push(ilike(sealedProducts.groupName, pattern));
+  }
+
+  const where = and(...conditions);
+  const [countRows, rows] = await Promise.all([
+    measureDbQuery(
+      "db.sealed_catalog_set_count",
+      () =>
+        db
+          .select({
+            count: sql<number>`
+              count(
+                distinct (
+                  ${sealedProducts.categoryId},
+                  ${sealedProducts.groupId},
+                  ${sealedProducts.languageCode},
+                  ${sealedProducts.groupName}
+                )
+              )::integer
+            `,
+          })
+          .from(sealedProducts)
+          .where(where),
+      { hasQuery: Boolean(query), languageCode },
+    ),
+    measureDbQuery(
+      "db.sealed_catalog_set_rows",
+      () =>
+        db
+          .select({
+            categoryId: sealedProducts.categoryId,
+            groupId: sealedProducts.groupId,
+            name: sealedProducts.groupName,
+            languageCode: sealedProducts.languageCode,
+            imageUrl: sql<string | null>`
+              (
+                array_agg(
+                  ${sealedProducts.imageUrl}
+                  order by ${sealedProducts.providerId}
+                )
+                filter (where ${sealedProducts.imageUrl} is not null)
+              )[1]
+            `,
+            releaseDate: sql<string | null>`max(${sealedProducts.releaseDate})`,
+            isPresale: sql<boolean>`bool_or(${sealedProducts.isPresale})`,
+            productCount: sql<number>`count(*)::integer`,
+            pricedProductCount: sql<number>`
+              count(${sealedCurrentPrices.sealedProductId})::integer
+            `,
+            startingPriceMinor: sql<number | null>`
+              min(${sealedCurrentPrices.amountMinor})::integer
+            `,
+            priceUpdatedAt: sql<Date | null>`
+              max(${sealedCurrentPrices.observedAt})
+            `,
+          })
+          .from(sealedProducts)
+          .leftJoin(
+            sealedCurrentPrices,
+            and(
+              eq(
+                sealedCurrentPrices.sealedProductId,
+                sealedProducts.id,
+              ),
+              eq(sealedCurrentPrices.source, "tcgcsv"),
+              eq(sealedCurrentPrices.priceType, "market"),
+              eq(sealedCurrentPrices.currency, "USD"),
+            ),
+          )
+          .where(where)
+          .groupBy(
+            sealedProducts.categoryId,
+            sealedProducts.groupId,
+            sealedProducts.languageCode,
+            sealedProducts.groupName,
+          )
+          .orderBy(
+            sql`max(${sealedProducts.releaseDate}) desc nulls last`,
+            asc(sealedProducts.groupName),
+            asc(sealedProducts.groupId),
+          )
+          .limit(pageSize)
+          .offset(offset),
+      { hasQuery: Boolean(query), languageCode, page, pageSize },
+    ),
+  ]);
+  const totalCount = countRows[0]?.count ?? 0;
+
+  return {
+    sets: rows.map(mapSet),
+    totalCount,
+    page,
+    pageSize,
+    totalPages: Math.ceil(totalCount / pageSize),
+  };
+}
+
+export const getSealedCatalogSet = cache(
+  async (categoryId: number, groupId: number) => {
+    if (
+      !Number.isSafeInteger(categoryId) ||
+      categoryId < 1 ||
+      !Number.isSafeInteger(groupId) ||
+      groupId < 1
+    ) {
+      return null;
+    }
+
+    const [row] = await db
+      .select({
+        categoryId: sealedProducts.categoryId,
+        groupId: sealedProducts.groupId,
+        name: sealedProducts.groupName,
+        languageCode: sealedProducts.languageCode,
+        imageUrl: sql<string | null>`
+          (
+            array_agg(
+              ${sealedProducts.imageUrl}
+              order by ${sealedProducts.providerId}
+            )
+            filter (where ${sealedProducts.imageUrl} is not null)
+          )[1]
+        `,
+        releaseDate: sql<string | null>`max(${sealedProducts.releaseDate})`,
+        isPresale: sql<boolean>`bool_or(${sealedProducts.isPresale})`,
+        productCount: sql<number>`count(*)::integer`,
+        pricedProductCount: sql<number>`
+          count(${sealedCurrentPrices.sealedProductId})::integer
+        `,
+        startingPriceMinor: sql<number | null>`
+          min(${sealedCurrentPrices.amountMinor})::integer
+        `,
+        priceUpdatedAt: sql<Date | null>`
+          max(${sealedCurrentPrices.observedAt})
+        `,
+      })
+      .from(sealedProducts)
+      .leftJoin(
+        sealedCurrentPrices,
+        and(
+          eq(sealedCurrentPrices.sealedProductId, sealedProducts.id),
+          eq(sealedCurrentPrices.source, "tcgcsv"),
+          eq(sealedCurrentPrices.priceType, "market"),
+          eq(sealedCurrentPrices.currency, "USD"),
+        ),
+      )
+      .where(
+        and(
+          eq(sealedProducts.categoryId, categoryId),
+          eq(sealedProducts.groupId, groupId),
+          eq(sealedProducts.isActive, true),
+        ),
+      )
+      .groupBy(
+        sealedProducts.categoryId,
+        sealedProducts.groupId,
+        sealedProducts.languageCode,
+        sealedProducts.groupName,
+      )
+      .limit(1);
+
+    return row ? mapSet(row) : null;
+  },
+);
+
 export async function getSealedCatalogPage(input?: {
   query?: string;
   languageCode?: "all" | "en" | "ja";
+  categoryId?: number;
+  groupId?: number;
   page?: number;
   pageSize?: number;
 }): Promise<SealedCatalogPage> {
@@ -81,6 +322,12 @@ export async function getSealedCatalogPage(input?: {
 
   if (languageCode !== "all") {
     conditions.push(eq(sealedProducts.languageCode, languageCode));
+  }
+  if (input?.categoryId !== undefined) {
+    conditions.push(eq(sealedProducts.categoryId, input.categoryId));
+  }
+  if (input?.groupId !== undefined) {
+    conditions.push(eq(sealedProducts.groupId, input.groupId));
   }
   if (query) {
     const pattern = `%${query.replace(/[\\%_]/g, (value) => `\\${value}`)}%`;
@@ -101,7 +348,12 @@ export async function getSealedCatalogPage(input?: {
           .select({ count: sql<number>`count(*)::integer` })
           .from(sealedProducts)
           .where(where),
-      { hasQuery: Boolean(query), languageCode },
+      {
+        hasQuery: Boolean(query),
+        languageCode,
+        categoryId: input?.categoryId,
+        groupId: input?.groupId,
+      },
     ),
     measureDbQuery(
       "db.sealed_catalog_rows",
@@ -133,7 +385,14 @@ export async function getSealedCatalogPage(input?: {
           )
           .limit(pageSize)
           .offset(offset),
-      { hasQuery: Boolean(query), languageCode, page, pageSize },
+      {
+        hasQuery: Boolean(query),
+        languageCode,
+        categoryId: input?.categoryId,
+        groupId: input?.groupId,
+        page,
+        pageSize,
+      },
     ),
   ]);
   const totalCount = countRows[0]?.count ?? 0;

@@ -3,6 +3,7 @@ import "server-only";
 import { cache } from "react";
 
 import { logWarn, measureOperation } from "@/lib/observability";
+import { isUnnumberedCardNumber } from "@/lib/pokemon-tcg/card-number";
 import type { PokemonTcgCard } from "@/lib/pokemon-tcg/types";
 
 type EbayEnvironment = "production" | "sandbox";
@@ -101,7 +102,10 @@ function formatAmount(amount: EbayAmount | undefined) {
 }
 
 function buildEbaySearchQuery(card: PokemonTcgCard) {
-  return `${card.name} ${card.set.name} ${card.number} Pokemon card`.slice(0, 100);
+  const number = isUnnumberedCardNumber(card.number)
+    ? ""
+    : `${card.number} `;
+  return `${card.name} ${card.set.name} ${number}Pokemon card`.slice(0, 100);
 }
 
 export function buildEbaySearchUrl(card: PokemonTcgCard) {

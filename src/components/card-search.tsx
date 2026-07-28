@@ -4,6 +4,7 @@ import { useRouter } from "next/navigation";
 import { FormEvent, KeyboardEvent, useEffect, useRef, useState, useTransition } from "react";
 
 import { ImageWithFallback } from "@/components/image-with-fallback";
+import { formatCardNumber } from "@/lib/pokemon-tcg/card-number";
 import type { CardSearchPayload, CardSearchResult } from "@/lib/pokemon-tcg/types";
 
 type SearchResponse = Partial<CardSearchPayload> & { error?: string };
@@ -183,7 +184,7 @@ export function CardSearch({ initialQuery = "" }: { initialQuery?: string }) {
                     <span className="min-w-0 text-left">
                       <span className="block truncate font-semibold text-[var(--ink)]">{card.name}</span>
                       <span className="block truncate text-xs text-[var(--muted)]">
-                        {card.set.name} · #{card.number}
+                        {card.set.name} · {formatCardNumber(card.number)}
                       </span>
                     </span>
                     <span className="ml-auto shrink-0 text-sm font-semibold text-[var(--secondary)]">

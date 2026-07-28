@@ -5,6 +5,7 @@ import Link from "next/link";
 import { ImageWithFallback } from "@/components/image-with-fallback";
 import { CARD_CONDITIONS } from "@/lib/collection/options";
 import type { CollectionItemDto } from "@/lib/collection/types";
+import { formatCardNumber } from "@/lib/pokemon-tcg/card-number";
 import { formatCardPrinting } from "@/lib/pokemon-tcg/printing";
 
 const usd = new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" });
@@ -63,7 +64,7 @@ export function CollectionCardGrid({
 
               <div className="p-4">
                 <p className="text-[0.68rem] font-semibold uppercase tracking-[0.12em] text-[var(--accent)]">
-                  {item.setName} - #{item.cardNumber}
+                  {item.setName} - {formatCardNumber(item.cardNumber)}
                 </p>
                 <h2 className="mt-1.5 text-base font-bold leading-6">{item.cardName}</h2>
 

@@ -60,6 +60,24 @@ try {
       ) as japanese_sealed_products,
       (
         select count(*)::integer
+        from (
+          select category_id, group_id
+          from sealed_products
+          where language_code = 'en' and is_active
+          group by category_id, group_id
+        ) as sealed_set
+      ) as english_sealed_sets,
+      (
+        select count(*)::integer
+        from (
+          select category_id, group_id
+          from sealed_products
+          where language_code = 'ja' and is_active
+          group by category_id, group_id
+        ) as sealed_set
+      ) as japanese_sealed_sets,
+      (
+        select count(*)::integer
         from sealed_current_prices
         where source = 'tcgcsv'
       ) as sealed_current_prices,
@@ -146,7 +164,25 @@ try {
             jsonb_typeof(provider_data) <> 'object'
             or provider_data ->> 'languageCode' <> 'ja'
           )
-      ) as malformed_japanese_provider_data
+      ) as malformed_japanese_provider_data,
+      (
+        select count(*)::integer
+        from cards
+        where language_code = 'ja'
+          and is_active
+          and number like 'Unnumbered-%'
+      ) as synthetic_japanese_unnumbered_numbers,
+      (
+        select count(*)::integer
+        from (
+          select category_id, group_id
+          from sealed_products
+          where is_active
+          group by category_id, group_id
+          having count(distinct language_code) <> 1
+             or count(distinct group_name) <> 1
+        ) as inconsistent_set
+      ) as inconsistent_sealed_set_metadata
   `;
   const failures = Object.entries(integrity).filter(
     ([, value]) => Number(value) !== 0,

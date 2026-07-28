@@ -15,6 +15,7 @@ import {
 } from "@/lib/catalog/data";
 import { getOwnedCardVariants } from "@/lib/collection/data";
 import { getEbayListingsForCard, type EbayListing } from "@/lib/ebay/listings";
+import { formatCardNumber } from "@/lib/pokemon-tcg/card-number";
 import { getCardPrintingOptions } from "@/lib/pokemon-tcg/printing";
 
 const allowedTcgplayerLinkHosts = new Set([
@@ -87,8 +88,8 @@ export async function generateMetadata({
   if (!card) return { title: "Card not found" };
 
   return {
-    title: `${card.name} #${card.number}`,
-    description: `${card.name} from ${card.set.name}, card number ${card.number}.`,
+    title: `${card.name} ${formatCardNumber(card.number)}`,
+    description: `${card.name} from ${card.set.name}, ${formatCardNumber(card.number).toLowerCase()}.`,
   };
 }
 
@@ -122,11 +123,7 @@ export default async function CardDetailPage({
     ["Series", card.set.series],
     [
       "Card number",
-      `#${card.number}${
-        card.set.printedTotal && !card.number.includes("/")
-          ? ` / ${card.set.printedTotal}`
-          : ""
-      }`,
+      formatCardNumber(card.number, card.set.printedTotal),
     ],
     ["Rarity", card.rarity],
     ["Illustrator", card.artist],
@@ -216,7 +213,8 @@ export default async function CardDetailPage({
             </p>
             <h1 className="mt-4 text-5xl font-bold sm:text-6xl">{card.name}</h1>
             <p className="mt-4 text-lg text-[var(--muted)]">
-              {card.set.name} · #{card.number}{card.rarity ? ` · ${card.rarity}` : ""}
+              {card.set.name} · {formatCardNumber(card.number)}
+              {card.rarity ? ` · ${card.rarity}` : ""}
             </p>
 
             <div className="mt-7 flex flex-wrap gap-2">

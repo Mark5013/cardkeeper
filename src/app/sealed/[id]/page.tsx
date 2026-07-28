@@ -50,7 +50,7 @@ export default async function SealedProductPage({
   const tcgplayerUrl = getSafeTcgplayerUrl(product.tcgplayerUrl);
   const details = [
     ["Language", product.languageCode === "ja" ? "Japanese" : "English"],
-    ["Product group", product.groupName],
+    ["Sealed set", product.groupName],
     ["Release date", product.releaseDate],
     ["Status", product.isPresale ? "Presale" : "Released"],
     ["Market", product.prices.market === undefined ? null : usd.format(product.prices.market)],
@@ -79,9 +79,9 @@ export default async function SealedProductPage({
         <article className="mx-auto w-full max-w-6xl px-6 pb-24 pt-6 lg:px-8">
           <Link
             className="text-sm font-semibold text-[var(--secondary)] hover:underline"
-            href="/sealed"
+            href={`/sealed/sets/${product.categoryId}/${product.groupId}`}
           >
-            Sealed products
+            {product.groupName}
           </Link>
 
           <div className="mt-7 grid gap-10 lg:grid-cols-[minmax(18rem,28rem)_minmax(0,1fr)] lg:gap-16">

@@ -5,6 +5,7 @@ import { useState } from "react";
 
 import { QuickAddDialog } from "@/components/collection/quick-add-dialog";
 import { ImageWithFallback } from "@/components/image-with-fallback";
+import { formatCardNumber } from "@/lib/pokemon-tcg/card-number";
 import type { CardSearchResult } from "@/lib/pokemon-tcg/types";
 
 const usd = new Intl.NumberFormat("en-US", {
@@ -63,7 +64,9 @@ export function CardResultGrid({
                   </p>
                   <h2 className="mt-2 text-xl font-bold text-[var(--ink)]">{card.name}</h2>
                   <p className="mt-2 text-sm leading-6 text-[var(--muted)]">
-                    {card.set.name}<br />#{card.number}
+                    {card.set.name}
+                    <br />
+                    {formatCardNumber(card.number)}
                   </p>
                   <p className="mt-4 font-bold text-[var(--secondary)]">
                     {card.startingPriceUsd === null ? "No current price" : `From ${usd.format(card.startingPriceUsd)}`}
